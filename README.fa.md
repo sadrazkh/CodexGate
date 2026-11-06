@@ -127,7 +127,7 @@ dotnet run --project src/CodexGate -- --urls http://127.0.0.1:8080 \
 | `Gate__Upstreams__N__ApiKey` | — | کلید آن. فقط خود درگاه آن را می‌بیند. |
 | `Gate__Upstreams__N__Name` | `upstream-N` | نامی که در گزارش دیده می‌شود. |
 | `Gate__Upstreams__N__Models__0` | همه | الگوی مدل‌هایی که این سرویس دارد. |
-| `Gate__DataDir` | `data` و در Docker `/data` | دیتابیس، کلیدهای کوکی و رمز اول. از آن پشتیبان بگیرید. |
+| `Gate__DataDir` | `codexgate-data` و در Docker `/data` | دیتابیس، کلیدهای کوکی و رمز اول. از آن پشتیبان بگیرید. |
 | `Gate__AdminUsername` / `Gate__AdminPassword` | `admin` / تصادفی | فقط وقتی هنوز مدیری وجود ندارد استفاده می‌شود. |
 | `Gate__TrustForwardedHeaders` | `false` | پشت پروکسی خودتان روشن کنید (IP واقعی کاربر و کوکی امن). |
 | `Gate__TrustedProxies__0` | همه | آدرس یا رنج CIDR پروکسی؛ بگذاریدش، مگر این‌که پورت درگاه جز از راه پروکسی در دسترس نباشد. |

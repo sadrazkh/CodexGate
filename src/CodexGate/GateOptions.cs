@@ -3,8 +3,11 @@ namespace CodexGate;
 /// <summary>Settings bound from the "Gate" configuration section (env: Gate__Name).</summary>
 public sealed class GateOptions
 {
-    /// <summary>Folder for the SQLite database, cookie keys and the first admin password.</summary>
-    public string DataDir { get; set; } = "data";
+    /// <summary>
+    /// Folder for the SQLite database, cookie keys and the first admin password. Not "data": on
+    /// case-insensitive file systems that is the Data source folder.
+    /// </summary>
+    public string DataDir { get; set; } = "codexgate-data";
 
     /// <summary>Username of the first admin, created only while no admin exists.</summary>
     public string AdminUsername { get; set; } = "admin";

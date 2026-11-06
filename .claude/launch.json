@@ -13,7 +13,7 @@
       "runtimeArgs": [
         "run", "--project", "src/CodexGate", "--",
         "--urls", "http://127.0.0.1:5190",
-        "--Gate:DataDir=data",
+        "--Gate:DataDir=codexgate-data",
         "--Gate:AdminPassword=dev-admin-pass-1",
         "--Gate:Upstreams:0:Name=mock",
         "--Gate:Upstreams:0:BaseUrl=http://127.0.0.1:5191/v1",

@@ -482,4 +482,4 @@ $RECYCLE.BIN/
 *.swp
 
 # CodexGate runtime data (SQLite database, cookie keys, first admin password)
-data/
+codexgate-data/

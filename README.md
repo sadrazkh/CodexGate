@@ -132,7 +132,7 @@ Every setting is an environment variable (`Gate__Name`) or a command-line flag (
 | `Gate__Upstreams__N__Name` | `upstream-N` | Shown in the report. |
 | `Gate__Upstreams__N__Models__0` | every model | Model patterns this upstream serves. |
 | `Gate__Upstreams__N__Headers__<Name>` | — | Extra headers, e.g. `OpenAI-Project`. |
-| `Gate__DataDir` | `data` · `/data` in Docker | Database, cookie keys and the first password. Back it up. |
+| `Gate__DataDir` | `codexgate-data` · `/data` in Docker | Database, cookie keys and the first password. Back it up. |
 | `Gate__AdminUsername` / `Gate__AdminPassword` | `admin` / generated | Used only while no admin exists. |
 | `Gate__TrustForwardedHeaders` | `false` | Turn on behind your own reverse proxy (real client IPs, secure cookies). |
 | `Gate__TrustedProxies__0` | anyone | The proxy’s address or CIDR range; set it unless the gateway’s port is unreachable except through the proxy. |
