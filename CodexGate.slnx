@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/CodexGate/CodexGate.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/CodexGate.Tests/CodexGate.Tests.csproj" />
+  </Folder>
+</Solution>

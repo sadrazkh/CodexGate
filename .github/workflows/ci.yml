@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Test
+        run: dotnet test -c Release --logger "console;verbosity=normal"
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: docker build -t codexgate .
+      - name: Start and check it answers
+        run: |
+          docker run -d --name codexgate -p 8080:8080 -e Gate__AdminPassword=ci-admin-pass-1 codexgate
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8080/healthz && break; sleep 1; done
+          curl -fsS http://127.0.0.1:8080/ | grep -q 'app.js'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8080/v1/responses -H 'Content-Type: application/json' -d '{"model":"gpt-5.5"}')
+          test "$code" = "401"
+          curl -fsS -X POST http://127.0.0.1:8080/api/auth/login -H 'X-CodexGate: 1' -H 'Content-Type: application/json' \
+            -d '{"username":"admin","password":"ci-admin-pass-1"}' > /dev/null
+      - name: Logs
+        if: always()
+        run: docker logs codexgate

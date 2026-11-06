@@ -1,0 +1,25 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mock-upstream",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["tools/mock-upstream.mjs", "5191"],
+      "port": 5191
+    },
+    {
+      "name": "codexgate",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": [
+        "run", "--project", "src/CodexGate", "--",
+        "--urls", "http://127.0.0.1:5190",
+        "--Gate:DataDir=data",
+        "--Gate:AdminPassword=dev-admin-pass-1",
+        "--Gate:Upstreams:0:Name=mock",
+        "--Gate:Upstreams:0:BaseUrl=http://127.0.0.1:5191/v1",
+        "--Gate:Upstreams:0:ApiKey=sk-mock-upstream-key"
+      ],
+      "port": 5190
+    }
+  ]
+}
