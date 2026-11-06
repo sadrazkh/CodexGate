@@ -66,7 +66,7 @@ jobs:
       - name: No terminal clients left behind
         run: |
           sleep 3
-          left=$(docker exec codexgate sh -c 'n=0; for f in /proc/[0-9]*/cmdline; do tr "\000" " " < "$f" 2>/dev/null | grep -q "tmux -L codexgate -C" && n=$((n+1)); done; echo $n')
+          left=$(docker exec codexgate sh -c 'n=0; for f in /proc/[0-9]*/cmdline; do tr "\000" " " < "$f" 2>/dev/null | grep -q "tmux -L codexgate -[C]" && n=$((n+1)); done; echo $n')
           echo "tmux control clients still running: $left"
           test "$left" = "0"
       - name: Logs
