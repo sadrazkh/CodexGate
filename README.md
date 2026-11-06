@@ -82,6 +82,14 @@ flowchart LR
     <td align="center"><sub>A new key with its setup command</sub></td>
     <td align="center"><sub>Persian, right-to-left, dark</sub></td>
   </tr>
+  <tr>
+    <td><img src="docs/screenshots/terminal-en-dark.png" alt="A session on the server in the web terminal"></td>
+    <td><img src="docs/screenshots/server-fa-dark.png" alt="Server sessions: start, open, stop"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Codex on the server, in the browser</sub></td>
+    <td align="center"><sub>Server sessions (Persian)</sub></td>
+  </tr>
 </table>
 
 ## Quick start

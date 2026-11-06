@@ -69,6 +69,14 @@ flowchart LR
     <td align="center"><sub>کاربران در یک نگاه</sub></td>
     <td align="center"><sub>ویرایش پلن</sub></td>
   </tr>
+  <tr>
+    <td><img src="docs/screenshots/server-fa-dark.png" alt="جلسه‌های روی سرور"></td>
+    <td><img src="docs/screenshots/terminal-en-dark.png" alt="ترمینال جلسه‌ی سرور در مرورگر"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>جلسه‌های روی سرور</sub></td>
+    <td align="center"><sub>Codex روی سرور، داخل مرورگر</sub></td>
+  </tr>
 </table>
 
 ## راه‌اندازی سریع
