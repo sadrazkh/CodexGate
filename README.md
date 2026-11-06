@@ -55,6 +55,7 @@ flowchart LR
 | **Accounts** | Username and password, admin or user, an end date with one-click renewal (+30 / +90 / +365 days), enable / disable, private notes. |
 | **Plans** | Any number of rolling limits (5 hours, 1 day, 7 days, 30 days or custom) in **tokens or dollars**, allowed models (`gpt-5.5`, `gpt-5*`), requests at a time. |
 | **Personal keys** | Users create and revoke their own keys; shown once, stored only as a hash, with “last used”. |
+| **Codex on the server** | Optional: start Codex (or a shell) on the server and use it from a web terminal, even on a phone. Sessions survive closed browsers and sleeping laptops, run under each teammate’s own system account, and count against the same plan. [How it works](docs/remote.md). |
 | **One-command setup** | Ready-made PowerShell and macOS/Linux commands write `~/.codex/config.toml` (old one kept as `.bak`) and put the key in `~/.codex/.env`. Tested against the real Codex CLI. |
 | **Limits Codex understands** | When a limit is hit, Codex stops at once with *“You’ve hit your usage limit. Try again at 10:05 AM.”* |
 | **Usage and cost** | Every request with input, cached and output tokens and its cost; 30-day charts; totals by user and model; CSV export; a reset that starts a user’s quotas over and keeps history. |
@@ -98,6 +99,9 @@ docker run -d --name codexgate --restart unless-stopped \
 
 Or copy [`docker-compose.example.yml`](docker-compose.example.yml) to `docker-compose.yml` and run `docker compose up -d`.
 
+For **Codex on the server** as well, build the `remote` image instead (`docker build -t codexgate-remote --target remote .`)
+and keep `/home` on a volume. See [docs/remote.md](docs/remote.md), which also covers plain Linux hosts.
+
 > [!IMPORTANT]
 > Put CodexGate behind HTTPS (Caddy, nginx, Cloudflare Tunnel…). Keys and passwords must not travel
 > over plain HTTP. Behind your own proxy, set `Gate__TrustForwardedHeaders=true`.
@@ -140,6 +144,8 @@ Every setting is an environment variable (`Gate__Name`) or a command-line flag (
 | `Gate__DrainSecondsAfterAbort` | `15` | After Codex stops an answer, keep reading this long so the real usage still arrives. |
 | `Gate__CachedTokenWeight` | `0.1` | How much a cached input token counts against token limits. |
 | `Gate__MaxRequestBodyMb` | `32` | Largest request Codex may send. |
+| `Gate__Remote__Enabled` | `false` · `true` in the remote image | Codex sessions on this server ([docs/remote.md](docs/remote.md)). |
+| `Gate__Remote__GatewayUrl` | `http://127.0.0.1:8080/v1` | How Codex inside a server session reaches this gateway. |
 
 ## How limits count
 
@@ -160,17 +166,17 @@ Every setting is an environment variable (`Gate__Name`) or a command-line flag (
   server-stored conversations (`previous_response_id`, `conversation`, `prompt`) and billed hosted tools other than an
   allowed web search are refused or removed, because the gateway could not meter them.
 - “Requests at a time” is counted in memory, so run a single instance.
-- Teammates run Codex on their own machines. Running Codex sessions on the server is not part of this project yet.
 
 ## Development
 
 ```bash
-dotnet test                         # 100 unit and integration tests against a fake upstream, no network
+dotnet test                         # 118 unit and integration tests (fake upstream, fake session host), no network
 node tools/mock-upstream.mjs 5191   # a stand-in Responses API to try the whole flow without spending anything
 ```
 
 The stack is deliberately small: ASP.NET Core minimal APIs, Dapper on SQLite, and a dependency-free
-JavaScript panel with no build step.
+JavaScript panel with no build step (xterm.js is vendored for the web terminal). CI also starts the remote
+image and drives a real server session end to end ([tools/remote-smoke.mjs](tools/remote-smoke.mjs)).
 
 ## License
 

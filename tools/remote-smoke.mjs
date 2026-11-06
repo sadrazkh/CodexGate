@@ -62,7 +62,8 @@ if (!me.remoteAvailable) fail('remoteAvailable is false');
 const session = await mate('POST', '/api/remote/sessions', { name: 'Smoke', dir: 'demo', program: 'shell', cols: 160, rows: 40 });
 console.log('started session', session.id);
 
-const script = "id -un; pwd; (cat /data/codexgate.db > /dev/null 2>&1 && echo DATA-READABLE) || echo NO-DATA-ACCESS; " +
+// Markers are split in the command text ("DATA-""READ") so only real output contains them, not the echoed command.
+const script = 'id -un; pwd; (cat /data/codexgate.db > /dev/null 2>&1 && echo DATA-"READABLE") || echo NO-DATA-"ACCESS"; ' +
   "codex exec --skip-git-repo-check 'Say hello' 2>&1 | tail -n 3; echo DONE-$((40+2))\r";
 const out = await terminal(mate, session.id, (ws) => ws.send(new TextEncoder().encode(script)), (o) => o.includes('DONE-42'), 120000);
 if (!out.includes('DONE-42')) fail('the command did not finish', out);

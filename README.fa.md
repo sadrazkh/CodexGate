@@ -50,6 +50,7 @@ flowchart LR
 | **حساب‌ها** | نام کاربری و رمز، نقش مدیر یا کاربر، تاریخ پایان با تمدید یک‌کلیکی (۳۰ / ۹۰ / ۳۶۵ روز)، فعال و غیرفعال، یادداشت خصوصی. |
 | **پلن‌ها** | هر تعداد سقف غلتان (۵ ساعته، روزانه، هفتگی، ماهانه یا دلخواه) به **توکن یا دلار**، مدل‌های مجاز (`gpt-5.5`، `gpt-5*`)، تعداد درخواست هم‌زمان. |
 | **کلید شخصی** | هر کاربر کلید خودش را می‌سازد و باطل می‌کند. کلید فقط یک بار نشان داده می‌شود و فقط هش آن ذخیره می‌شود. |
+| **Codex روی سرور** | اختیاری: Codex یا یک shell را روی سرور اجرا کنید و از ترمینال داخل مرورگر، حتی روی گوشی، با آن کار کنید. جلسه با بستن مرورگر یا خوابیدن لپ‌تاپ نمی‌میرد، با حساب سیستمی جدای هر هم‌تیمی اجرا می‌شود و از همان سهمیه کم می‌کند. [توضیح کامل](docs/remote.fa.md). |
 | **نصب با یک دستور** | دستور آماده برای PowerShell و مک/لینوکس که `~/.codex/config.toml` را می‌نویسد (نسخه‌ی قبلی با پسوند `.bak` می‌ماند) و کلید را در `~/.codex/.env` می‌گذارد. با Codex واقعی آزموده شده. |
 | **سقفی که Codex می‌فهمد** | وقتی سهمیه تمام شود، Codex همان لحظه می‌ایستد و می‌گوید *«You’ve hit your usage limit. Try again at 10:05 AM.»* |
 | **مصرف و هزینه** | هر درخواست با توکن ورودی، از کش، خروجی و هزینه؛ نمودار ۳۰ روزه؛ جمع به تفکیک کاربر و مدل؛ خروجی CSV؛ صفر کردن سهمیه‌ی یک کاربر بدون پاک شدن سابقه. |
@@ -88,6 +89,8 @@ docker run -d --name codexgate --restart unless-stopped \
 </div>
 
 یا فایل [`docker-compose.example.yml`](docker-compose.example.yml) را به `docker-compose.yml` کپی کنید و `docker compose up -d` بزنید.
+
+اگر **Codex روی سرور** را هم می‌خواهید، به‌جای آن image نسخه‌ی `remote` را بسازید (`docker build -t codexgate-remote --target remote .`) و `/home` را روی volume نگه دارید. جزئیات و راه‌اندازی روی لینوکس بدون Docker در [docs/remote.fa.md](docs/remote.fa.md) است.
 
 > [!IMPORTANT]
 > CodexGate را پشت HTTPS بگذارید (Caddy، nginx، Cloudflare Tunnel و…). کلید و رمز نباید روی HTTP ساده جابه‌جا شوند. پشت پروکسی خودتان `Gate__TrustForwardedHeaders=true` را هم بگذارید.
@@ -135,6 +138,8 @@ dotnet run --project src/CodexGate -- --urls http://127.0.0.1:8080 \
 | `Gate__DrainSecondsAfterAbort` | `15` | وقتی Codex جوابی را قطع می‌کند، درگاه این‌قدر ادامه می‌خواند تا مصرف واقعی برسد. |
 | `Gate__CachedTokenWeight` | `0.1` | هر توکن ورودیِ از کش چقدر از سقف توکنی کم کند. |
 | `Gate__MaxRequestBodyMb` | `32` | بزرگ‌ترین درخواستی که Codex می‌تواند بفرستد. |
+| `Gate__Remote__Enabled` | `false` و در image ریموت `true` | جلسه‌های Codex روی همین سرور ([docs/remote.fa.md](docs/remote.fa.md)). |
+| `Gate__Remote__GatewayUrl` | `http://127.0.0.1:8080/v1` | آدرسی که Codex داخل جلسه‌ی سرور با آن به همین درگاه می‌رسد. |
 
 ## سهمیه چطور شمرده می‌شود
 
@@ -150,14 +155,13 @@ dotnet run --project src/CodexGate -- --urls http://127.0.0.1:8080 \
 - **کلید API، نه اشتراک ChatGPT.** شریک کردن لاگین Plus/Pro/Business یک نفر بین چند نفر خلاف قوانین اوپن‌ای‌آی است و حساب را به خطر می‌اندازد. برای اشتراک، به هر نفر صندلی خودش را بدهید.
 - فقط آنچه Codex لازم دارد رد می‌شود: `/v1/responses` به‌صورت جریانی و `/v1/models`. حالت پس‌زمینه، سرعت ویژه، گفتگوهای ذخیره‌شده روی سرور (`previous_response_id`، `conversation`، `prompt`) و ابزارهای پولی به‌جز جست‌وجوی وبِ مجاز، رد یا حذف می‌شوند، چون درگاه نمی‌تواند مصرفشان را بشمارد.
 - «درخواست هم‌زمان» در حافظه شمرده می‌شود، پس فقط یک نمونه از برنامه را اجرا کنید.
-- هم‌تیمی‌ها Codex را روی سیستم خودشان اجرا می‌کنند. اجرای Codex روی خود سرور فعلاً بخشی از این پروژه نیست.
 
 ## توسعه
 
 <div dir="ltr">
 
 ```bash
-dotnet test                         # 100 unit and integration tests against a fake upstream, no network
+dotnet test                         # 118 unit and integration tests (fake upstream, fake session host), no network
 node tools/mock-upstream.mjs 5191   # a stand-in Responses API to try the whole flow for free
 ```
 
