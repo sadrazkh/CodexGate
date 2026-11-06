@@ -87,7 +87,7 @@ public sealed class PlanStore(Database db)
     {
         await using var c = await db.OpenAsync();
         var plans = (await c.QueryAsync<PlanRow>(
-            "SELECT id, name, max_concurrency, allowed_models, created_at FROM plans ORDER BY name")).ToList();
+            "SELECT id, name, max_concurrency, allowed_models, created_at, remote_enabled, remote_max_sessions, remote_memory_mb FROM plans ORDER BY name")).ToList();
         var limits = (await c.QueryAsync<PlanLimitRow>(
             "SELECT id, plan_id, window_hours, kind, amount FROM plan_limits ORDER BY window_hours, id")).ToList();
         foreach (var p in plans)
@@ -101,7 +101,7 @@ public sealed class PlanStore(Database db)
     {
         await using var c = await db.OpenAsync();
         var plan = await c.QuerySingleOrDefaultAsync<PlanRow>(
-            "SELECT id, name, max_concurrency, allowed_models, created_at FROM plans WHERE id = @id", new { id });
+            "SELECT id, name, max_concurrency, allowed_models, created_at, remote_enabled, remote_max_sessions, remote_memory_mb FROM plans WHERE id = @id", new { id });
         if (plan is not null)
         {
             plan.Limits = (await c.QueryAsync<PlanLimitRow>(
@@ -126,15 +126,16 @@ public sealed class PlanStore(Database db)
         if (plan.Id == 0)
         {
             id = await c.ExecuteScalarAsync<long>("""
-                INSERT INTO plans (name, max_concurrency, allowed_models, created_at)
-                VALUES (@Name, @MaxConcurrency, @AllowedModels, @CreatedAt) RETURNING id
+                INSERT INTO plans (name, max_concurrency, allowed_models, created_at, remote_enabled, remote_max_sessions, remote_memory_mb)
+                VALUES (@Name, @MaxConcurrency, @AllowedModels, @CreatedAt, @RemoteEnabled, @RemoteMaxSessions, @RemoteMemoryMb) RETURNING id
                 """, plan, tx);
         }
         else
         {
             id = plan.Id;
             await c.ExecuteAsync(
-                "UPDATE plans SET name = @Name, max_concurrency = @MaxConcurrency, allowed_models = @AllowedModels WHERE id = @Id",
+                "UPDATE plans SET name = @Name, max_concurrency = @MaxConcurrency, allowed_models = @AllowedModels, " +
+                "remote_enabled = @RemoteEnabled, remote_max_sessions = @RemoteMaxSessions, remote_memory_mb = @RemoteMemoryMb WHERE id = @Id",
                 plan, tx);
             await c.ExecuteAsync("DELETE FROM plan_limits WHERE plan_id = @id", new { id }, tx);
         }

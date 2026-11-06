@@ -4,6 +4,7 @@ using CodexGate;
 using CodexGate.Api;
 using CodexGate.Data;
 using CodexGate.Gateway;
+using CodexGate.Remote;
 using CodexGate.Security;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
@@ -35,6 +36,10 @@ services.AddSingleton<UpstreamPool>();
 services.AddSingleton<GatewayHandler>();
 services.AddSingleton<PanelViews>();
 services.AddSingleton<LoginGuard>();
+services.AddSingleton<RemoteStore>();
+services.AddSingleton<TerminalTickets>();
+services.AddSingleton<IRemoteHost, TmuxRemoteHost>();
+services.AddSingleton<RemoteService>();
 
 // Cookie keys live next to the database so sign-ins survive restarts and redeploys.
 services.AddDataProtection().SetApplicationName("CodexGate");
@@ -135,6 +140,7 @@ app.UseStaticFiles(new StaticFileOptions
     OnPrepareResponse = ctx => ctx.Context.Response.Headers.CacheControl = "no-cache",
 });
 app.UseRateLimiter();
+app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(25) });
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseMiddleware<CsrfHeaderMiddleware>();
@@ -142,6 +148,7 @@ app.UseMiddleware<CsrfHeaderMiddleware>();
 app.MapGet("/healthz", () => Results.Text("ok"));
 app.MapAccountApi();
 app.MapAdminApi();
+app.MapRemoteApi();
 app.MapGateway();
 app.Map("/api/{**rest}", () => Errors.NotFound());
 

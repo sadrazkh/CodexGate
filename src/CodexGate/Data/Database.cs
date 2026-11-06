@@ -129,5 +129,24 @@ public sealed class Database
         """
         ALTER TABLE usage ADD COLUMN tool_calls INTEGER NOT NULL DEFAULT 0;
         """,
+        """
+        ALTER TABLE plans ADD COLUMN remote_enabled INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE plans ADD COLUMN remote_max_sessions INTEGER NOT NULL DEFAULT 2;
+        ALTER TABLE plans ADD COLUMN remote_memory_mb INTEGER NOT NULL DEFAULT 0;
+        CREATE TABLE remote_sessions (
+            id         INTEGER PRIMARY KEY,
+            user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            name       TEXT    NOT NULL,
+            dir        TEXT    NOT NULL,
+            program    TEXT    NOT NULL CHECK (program IN ('codex', 'shell')),
+            created_at INTEGER NOT NULL
+        );
+        CREATE INDEX ix_remote_sessions_user ON remote_sessions(user_id);
+        CREATE TABLE remote_accounts (
+            user_id        INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+            key_id         INTEGER,
+            provisioned_at INTEGER NOT NULL
+        );
+        """,
     ];
 }

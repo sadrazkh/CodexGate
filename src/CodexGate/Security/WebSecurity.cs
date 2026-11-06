@@ -79,7 +79,7 @@ public sealed class SecurityHeadersMiddleware(RequestDelegate next)
         {
             var h = context.Response.Headers;
             h["Content-Security-Policy"] =
-                "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; " +
+                "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; " +
                 "frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
             h["X-Content-Type-Options"] = "nosniff";
             h["X-Frame-Options"] = "DENY";

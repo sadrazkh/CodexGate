@@ -38,7 +38,27 @@ public sealed class PlanRow
     public int MaxConcurrency { get; set; } = 2;
     public string AllowedModels { get; set; } = "";
     public long CreatedAt { get; set; }
+
+    /// <summary>Whether users on this plan may run Codex sessions on the server.</summary>
+    public bool RemoteEnabled { get; set; }
+    public int RemoteMaxSessions { get; set; } = 2;
+
+    /// <summary>Memory cap for a user's server sessions in MiB (0 = none); needs systemd on the host.</summary>
+    public int RemoteMemoryMb { get; set; }
     public List<PlanLimitRow> Limits { get; set; } = [];
+}
+
+public sealed class RemoteSessionRow
+{
+    public long Id { get; set; }
+    public long UserId { get; set; }
+    public string Name { get; set; } = "";
+    public string Dir { get; set; } = "";
+    public string Program { get; set; } = "codex";
+    public long CreatedAt { get; set; }
+
+    /// <summary>The tmux session name on the host.</summary>
+    public string TmuxName => "s" + Id.ToString(System.Globalization.CultureInfo.InvariantCulture);
 }
 
 public static class LimitKinds

@@ -205,6 +205,11 @@ code.inline { font-family: var(--mono); background: var(--panel-2); border: 1px 
 .chart .bar.zero { background: var(--line); opacity: 1; }
 .chart-axis { display: flex; justify-content: space-between; color: var(--muted); font-size: .78rem; direction: ltr; }
 
+/* terminal */
+.terminal-box { height: calc(100vh - 210px); min-height: 320px; background: #0b0f1a; border-radius: var(--radius); padding: 8px; border: 1px solid var(--line); }
+.terminal-box .xterm { height: 100%; }
+a.btn.small { padding: .2rem .65rem; font-size: .85rem; }
+
 /* login */
 .login-wrap { min-height: 100vh; display: grid; place-items: center; padding: 1rem; }
 .login { width: 100%; max-width: 380px; }

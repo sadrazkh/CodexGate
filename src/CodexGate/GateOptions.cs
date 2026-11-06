@@ -41,6 +41,23 @@ public sealed class GateOptions
     /// safe when the gateway's own port cannot be reached except through the proxy.
     /// </summary>
     public List<string> TrustedProxies { get; set; } = [];
+
+    /// <summary>Codex sessions on this server (needs Linux, tmux, Codex and the root helper; see docs/remote.md).</summary>
+    public RemoteOptions Remote { get; set; } = new();
+}
+
+public sealed class RemoteOptions
+{
+    public bool Enabled { get; set; }
+
+    /// <summary>The root helper that creates server accounts and runs tmux as them.</summary>
+    public string Helper { get; set; } = "/usr/local/libexec/codexgate-host";
+
+    /// <summary>Run the helper through "sudo -n" (CodexGate itself should not run as root).</summary>
+    public bool UseSudo { get; set; } = true;
+
+    /// <summary>The gateway address Codex inside server sessions uses; normally this server on loopback.</summary>
+    public string GatewayUrl { get; set; } = "http://127.0.0.1:8080/v1";
 }
 
 public sealed class UpstreamOptions

@@ -10,7 +10,9 @@ public sealed record UserInput(
     string? Username, string? DisplayName, string? Password, string? Role, long? PlanId, bool? Enabled,
     long? ExpiresAt, bool? NoExpiry, int? ExpiresInDays, string? Note);
 public sealed record RenewRequest(int Days);
-public sealed record PlanInput(string? Name, int? MaxConcurrency, string? AllowedModels, List<LimitInput>? Limits);
+public sealed record PlanInput(
+    string? Name, int? MaxConcurrency, string? AllowedModels, List<LimitInput>? Limits,
+    bool? RemoteEnabled = null, int? RemoteMaxSessions = null, int? RemoteMemoryMb = null);
 public sealed record LimitInput(int WindowHours, string? Kind, double Amount);
 public sealed record PriceInput(string? Model, double InputPerM, double CachedPerM, double OutputPerM);
 public sealed record SettingsInput(string? DefaultModel, string? PublicUrl, bool? AllowWebSearch = null, double? WebSearchPrice = null);
@@ -23,18 +25,21 @@ public sealed record WindowView(int WindowHours, string Kind, double Amount, dou
 
 public sealed record LimitView(int WindowHours, string Kind, double Amount);
 
-public sealed record PlanView(long Id, string Name, int MaxConcurrency, List<string> AllowedModels, List<LimitView> Limits, long Users)
+public sealed record PlanView(
+    long Id, string Name, int MaxConcurrency, List<string> AllowedModels, List<LimitView> Limits, long Users,
+    bool RemoteEnabled, int RemoteMaxSessions, int RemoteMemoryMb)
 {
     public static PlanView From(PlanRow p, long users = 0) => new(
         p.Id, p.Name, p.MaxConcurrency, ModelPatterns.Parse(p.AllowedModels),
-        p.Limits.Select(l => new LimitView(l.WindowHours, l.Kind, l.Amount)).ToList(), users);
+        p.Limits.Select(l => new LimitView(l.WindowHours, l.Kind, l.Amount)).ToList(), users,
+        p.RemoteEnabled, p.RemoteMaxSessions, p.RemoteMemoryMb);
 }
 
 public sealed record GatewayView(string BaseUrl, string DefaultModel, string ProviderId, string EnvKey, int ActiveKeys);
 
 public sealed record MeView(
     long Id, string Username, string DisplayName, string Role, bool Enabled, long? ExpiresAt, string Access,
-    PlanView? Plan, List<WindowView> Quota, GatewayView Gateway);
+    PlanView? Plan, List<WindowView> Quota, GatewayView Gateway, bool RemoteAvailable);
 
 public sealed record KeyView(long Id, string Name, string Prefix, long CreatedAt, long? LastUsedAt, long? RevokedAt)
 {
@@ -57,7 +62,8 @@ public sealed record AdminUserView(
 
 /// <summary>Builds what the panel shows for an account; shared by the user's and the admin's views.</summary>
 public sealed class PanelViews(
-    PlanStore plans, KeyStore keys, QuotaService quota, SettingsStore settings, TimeProvider time)
+    PlanStore plans, KeyStore keys, QuotaService quota, SettingsStore settings, TimeProvider time,
+    Microsoft.Extensions.Options.IOptions<GateOptions> options)
 {
     public const string ProviderId = "codexgate";
     public const string EnvKey = "CODEXGATE_API_KEY";
@@ -82,7 +88,8 @@ public sealed class PanelViews(
         return new MeView(
             user.Id, user.Username, user.DisplayName, user.Role, user.Enabled, user.ExpiresAt,
             Access.Code(Access.Check(user, plan, now)), plan is null ? null : PlanView.From(plan),
-            windows.Select(WindowView.From).ToList(), gateway);
+            windows.Select(WindowView.From).ToList(), gateway,
+            options.Value.Remote.Enabled && plan is { RemoteEnabled: true });
     }
 
     public static string BaseUrl(string? publicUrl, HttpRequest request)

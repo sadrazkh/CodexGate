@@ -345,17 +345,25 @@
   // ---------- routing ----------
   const PAGES = {
     me: { title: 'navMe', render: pageMe },
+    server: { title: 'navServer', render: pageServer, remote: true },
+    terminal: { title: 'navServer', render: pageTerminal, remote: true, hidden: true },
     users: { title: 'navUsers', render: pageUsers, admin: true },
     plans: { title: 'navPlans', render: pagePlans, admin: true },
     report: { title: 'navReport', render: pageReport, admin: true },
     settings: { title: 'navSettings', render: pageSettings, admin: true },
   };
 
+  function routeParts() {
+    return (location.hash || '').replace(/^#\/?/, '').split('/');
+  }
+
+  function allowed(page) {
+    return page && !(page.admin && state.me.role !== 'admin') && !(page.remote && !state.me.remoteAvailable);
+  }
+
   function currentRoute() {
-    const id = (location.hash || '').replace(/^#\/?/, '') || 'me';
-    const page = PAGES[id];
-    if (!page || (page.admin && state.me.role !== 'admin')) return 'me';
-    return id;
+    const id = routeParts()[0] || 'me';
+    return allowed(PAGES[id]) ? id : 'me';
   }
 
   window.addEventListener('hashchange', () => { if (state.me) render(); });
@@ -377,6 +385,7 @@
 
   function render() {
     closeModal();
+    closeTerminal();
     if (!state.me) {
       document.title = 'CodexGate';
       mount(root, loginView());
@@ -385,8 +394,11 @@
     const route = currentRoute();
     const nav = h('nav', { class: 'nav' },
       Object.entries(PAGES)
-        .filter(([, p]) => !p.admin || state.me.role === 'admin')
-        .map(([id, p]) => h('a', { href: '#/' + id, class: id === route ? 'active' : null, 'aria-current': id === route ? 'page' : null }, t(p.title))));
+        .filter(([, p]) => allowed(p) && !p.hidden)
+        .map(([id, p]) => {
+          const on = id === route || (id === 'server' && route === 'terminal');
+          return h('a', { href: '#/' + id, class: on ? 'active' : null, 'aria-current': on ? 'page' : null }, t(p.title));
+        }));
     const main = h('main');
     mount(root,
       h('header', { class: 'topbar' },
@@ -779,7 +791,9 @@
     const plans = await api('GET', '/api/admin/plans');
     if (!alive()) return;
     const cards = plans.map((p) => h('div', { class: 'card' },
-      h('div', { class: 'card-head' }, h('h2', null, p.name), h('span', { class: 'badge' }, tn('usersCount', p.users, fmtInt(p.users)))),
+      h('div', { class: 'card-head' }, h('h2', null, p.name), h('div', { class: 'actions' },
+        p.remoteEnabled ? h('span', { class: 'badge brand' }, t('serverBadge')) : null,
+        h('span', { class: 'badge' }, tn('usersCount', p.users, fmtInt(p.users))))),
       p.limits.length
         ? h('ul', { class: 'limits' }, p.limits.map((l) => h('li', null, t('perWindow', { w: windowLabel(l.windowHours), amount: fmtAmount(l.kind, l.amount) }))))
         : h('p', { class: 'muted' }, t('noLimit')),
@@ -812,6 +826,9 @@
     const models = input({ dir: 'ltr', value: plan ? plan.allowedModels.join(', ') : '', placeholder: 'gpt-5.5, gpt-5*' });
     const limitsBox = h('div');
     const limits = plan ? plan.limits.map((l) => Object.assign({}, l)) : [];
+    const remoteOn = h('input', { type: 'checkbox', checked: plan ? plan.remoteEnabled : false });
+    const remoteSessions = input({ type: 'number', min: '1', max: '20', value: String(plan ? plan.remoteMaxSessions : 2), dir: 'ltr' });
+    const remoteMemory = input({ type: 'number', min: '0', max: '262144', value: String(plan ? plan.remoteMemoryMb : 0), dir: 'ltr' });
 
     function drawLimits() {
       mount(limitsBox, limits.length ? limits.map((l, i) => {
@@ -861,6 +878,9 @@
             maxConcurrency: Number(concurrency.value),
             allowedModels: models.value,
             limits: limits.map((l) => ({ windowHours: Number(l.windowHours), kind: l.kind, amount: Number(l.amount) })),
+            remoteEnabled: remoteOn.checked,
+            remoteMaxSessions: Number(remoteSessions.value),
+            remoteMemoryMb: Number(remoteMemory.value),
           };
           if (plan) await api('PUT', '/api/admin/plans/' + plan.id, body);
           else await api('POST', '/api/admin/plans', body);
@@ -876,6 +896,9 @@
     h('p', { class: 'small muted' }, t('limitsHelp')),
     limitsBox,
     h('div', { class: 'actions' }, addLimit, template),
+    h('h3', null, t('serverSessions')),
+    h('label', { class: 'check' }, remoteOn, t('planRemoteEnable')),
+    h('div', { class: 'row' }, field(t('planRemoteSessions'), remoteSessions), field(t('planRemoteMemory'), remoteMemory, t('planRemoteMemoryHelp'))),
     h('div', { class: 'actions end' }, save));
     openModal(plan ? t('editPlanTitle') : t('newPlanTitle'), form, true);
   }
@@ -985,6 +1008,196 @@
         box,
         h('div', { class: 'actions' }, addPrice),
         h('div', { class: 'actions end' }, savePrices)));
+  }
+
+  // ---------- server sessions ----------
+  async function pageServer(main, alive) {
+    let data;
+    try {
+      data = await api('GET', '/api/remote/');
+    } catch (err) {
+      if (alive()) mount(main, h('div', { class: 'page-head' }, h('h1', null, t('serverTitle'))), h('div', { class: 'notice bad' }, errorText(err)));
+      return;
+    }
+    if (!alive()) return;
+    if (!data.available) {
+      mount(main, h('h1', null, t('serverTitle')), h('div', { class: 'notice warn' }, t('err_remote_not_allowed')));
+      return;
+    }
+    const running = data.sessions.filter((s) => s.running).length;
+    const name = input({ value: t('sessionDefaultName', { n: fmtInt(data.sessions.length + 1) }), maxlength: '40' });
+    const dir = input({ value: 'project', dir: 'ltr', maxlength: '64' });
+    const program = select([['codex', t('programCodex')], ['shell', t('programShell')]], 'codex');
+    const start = h('button', { class: 'primary', type: 'submit', disabled: running >= data.maxSessions }, t('startSession'));
+    const form = h('form', {
+      onsubmit: (e) => {
+        e.preventDefault();
+        guarded(start, async () => {
+          const size = terminalSizeGuess();
+          const s = await api('POST', '/api/remote/sessions', { name: name.value, dir: dir.value, program: program.value, cols: size.cols, rows: size.rows });
+          location.hash = '#/terminal/' + s.id;
+        });
+      },
+    },
+    h('div', { class: 'row' }, field(t('sessionName'), name), field(t('sessionFolder'), dir, t('sessionFolderHelp')), field(t('program'), program),
+      h('div', { class: 'fixed field' }, start)));
+
+    const rows = data.sessions.map((s) => h('tr', null,
+      h('td', null, h('strong', null, s.name)),
+      h('td', null, ltr('~/work/' + s.dir, 'small')),
+      h('td', null, s.program === 'codex' ? 'Codex' : t('programShell')),
+      h('td', { class: 'small' }, ago(s.createdAt)),
+      h('td', null, s.running ? h('span', { class: 'badge ok' }, t('running')) : h('span', { class: 'badge' }, t('ended'))),
+      h('td', null, h('div', { class: 'actions' },
+        s.running ? h('a', { class: 'btn small', href: '#/terminal/' + s.id }, t('open')) : null,
+        h('button', {
+          class: 'small danger', type: 'button',
+          onclick: (e) => {
+            if (s.running && !confirm(t('stopConfirm', { name: s.name }))) return;
+            guarded(e.currentTarget, async () => {
+              await api('DELETE', '/api/remote/sessions/' + s.id);
+              toast(t('sessionStopped'));
+              render();
+            });
+          },
+        }, s.running ? t('stop') : t('delete'))))));
+
+    mount(main,
+      h('div', { class: 'page-head' }, h('h1', null, t('serverTitle')),
+        h('span', { class: 'muted small' }, t('sessionsUsed', { n: fmtInt(running), max: fmtInt(data.maxSessions) }))),
+      h('p', { class: 'muted' }, t('serverIntro')),
+      data.memoryMb > 0 ? h('p', { class: 'small muted' }, t('memoryCap', { n: fmtInt(data.memoryMb) })) : null,
+      h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('h2', null, t('newSession'))), form),
+      h('div', { class: 'card' }, table([t('sessionName'), t('sessionFolder'), t('program'), t('colCreated'), t('colStatus'), ''], rows, t('sessionsEmpty'))));
+  }
+
+  function terminalSizeGuess() {
+    const width = Math.min(window.innerWidth, 1180) - 60;
+    const height = window.innerHeight - 220;
+    return { cols: Math.max(40, Math.floor(width / 8.4)), rows: Math.max(12, Math.floor(height / 18)) };
+  }
+
+  let xtermLoading = null;
+  function loadXterm() {
+    if (window.Terminal && window.FitAddon) return Promise.resolve();
+    if (!xtermLoading) {
+      xtermLoading = new Promise((resolve, reject) => {
+        const css = document.createElement('link');
+        css.rel = 'stylesheet';
+        css.href = 'vendor/xterm/xterm.css';
+        document.head.append(css);
+        const core = document.createElement('script');
+        core.src = 'vendor/xterm/xterm.js';
+        core.onerror = reject;
+        core.onload = () => {
+          const fit = document.createElement('script');
+          fit.src = 'vendor/xterm/addon-fit.js';
+          fit.onerror = reject;
+          fit.onload = () => resolve();
+          document.head.append(fit);
+        };
+        document.head.append(core);
+      });
+    }
+    return xtermLoading;
+  }
+
+  let terminalCleanup = null;
+  function closeTerminal() {
+    if (terminalCleanup) {
+      const done = terminalCleanup;
+      terminalCleanup = null;
+      done();
+    }
+  }
+
+  async function pageTerminal(main, alive) {
+    const id = Number(routeParts()[1]);
+    const [data] = await Promise.all([api('GET', '/api/remote/'), loadXterm()]);
+    if (!alive()) return;
+    const session = data.sessions && data.sessions.find((s) => s.id === id);
+    if (!session) {
+      mount(main, h('div', { class: 'notice warn' }, t('sessionMissing')), h('a', { class: 'btn', href: '#/server' }, t('back')));
+      return;
+    }
+    const status = h('span', { class: 'badge' }, t('terminalConnecting'));
+    const reconnect = h('button', { class: 'small hidden', type: 'button' }, t('reconnect'));
+    const box = h('div', { class: 'terminal-box', dir: 'ltr' });
+    mount(main,
+      h('div', { class: 'page-head' },
+        h('div', { class: 'actions' }, h('a', { class: 'btn small', href: '#/server' }, t('back')), h('h1', null, session.name), status),
+        h('div', { class: 'actions' }, reconnect, ltr('~/work/' + session.dir, 'small muted'))),
+      box,
+      h('p', { class: 'small muted' }, t('terminalHint')));
+
+    const term = new window.Terminal({
+      cursorBlink: true,
+      fontSize: 14,
+      fontFamily: 'ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, monospace',
+      scrollback: 5000,
+      allowProposedApi: false,
+      theme: { background: '#0b0f1a', foreground: '#e4e9f5', cursor: '#6d8cff', selectionBackground: '#2f3d66' },
+    });
+    const fit = new window.FitAddon.FitAddon();
+    term.loadAddon(fit);
+    term.open(box);
+    fit.fit();
+    term.focus();
+
+    const encoder = new TextEncoder();
+    let ws = null;
+    let closedByUs = false;
+    const setStatus = (key, cls) => {
+      status.textContent = t(key);
+      status.className = 'badge ' + (cls || '');
+    };
+    const send = (data) => { if (ws && ws.readyState === WebSocket.OPEN) ws.send(encoder.encode(data)); };
+    const sendSize = () => {
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+    };
+    const onData = term.onData(send);
+    const onBinary = term.onBinary((data) => {
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(Uint8Array.from(data, (c) => c.charCodeAt(0) & 255));
+    });
+    const onResize = term.onResize(sendSize);
+
+    async function connect() {
+      reconnect.classList.add('hidden');
+      setStatus('terminalConnecting');
+      let ticket;
+      try {
+        ticket = (await api('POST', '/api/remote/sessions/' + id + '/ticket')).ticket;
+      } catch (err) {
+        setStatus('terminalClosed', 'bad');
+        toast(errorText(err), true);
+        reconnect.classList.remove('hidden');
+        return;
+      }
+      const scheme = location.protocol === 'https:' ? 'wss://' : 'ws://';
+      ws = new WebSocket(scheme + location.host + '/api/remote/sessions/' + id + '/terminal?ticket=' + encodeURIComponent(ticket) +
+        '&cols=' + term.cols + '&rows=' + term.rows);
+      ws.binaryType = 'arraybuffer';
+      ws.onopen = () => setStatus('terminalConnected', 'ok');
+      ws.onmessage = (e) => term.write(typeof e.data === 'string' ? e.data : new Uint8Array(e.data));
+      ws.onclose = (e) => {
+        if (closedByUs) return;
+        setStatus(e.reason === 'The session ended.' ? 'ended' : 'terminalClosed', e.reason === 'The session ended.' ? '' : 'warn');
+        reconnect.classList.remove('hidden');
+      };
+    }
+    reconnect.addEventListener('click', connect);
+    const onWindowResize = () => fit.fit();
+    window.addEventListener('resize', onWindowResize);
+    terminalCleanup = () => {
+      closedByUs = true;
+      window.removeEventListener('resize', onWindowResize);
+      onData.dispose();
+      onBinary.dispose();
+      onResize.dispose();
+      if (ws) ws.close();
+      term.dispose();
+    };
+    connect();
   }
 
   boot();

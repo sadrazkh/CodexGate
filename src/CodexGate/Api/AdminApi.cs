@@ -285,7 +285,8 @@ public static class AdminApi
         return Results.Ok(new { expiresAt = user.ExpiresAt });
     }
 
-    private static async Task<IResult> DeleteUserAsync(long id, HttpContext ctx, UserStore users)
+    private static async Task<IResult> DeleteUserAsync(
+        long id, HttpContext ctx, UserStore users, CodexGate.Remote.RemoteService remote, RemoteStore remoteStore)
     {
         var user = await users.GetAsync(id);
         if (user is null)
@@ -296,9 +297,23 @@ public static class AdminApi
         {
             return Errors.Json(409, "cannot_delete_self");
         }
+        var sessions = await remoteStore.ListAsync(id);
         if (!await users.DeleteAsync(id, keepAnAdmin: user.IsAdmin && user.Enabled))
         {
             return Errors.Json(409, "last_admin");
+        }
+        if (remote.Enabled)
+        {
+            foreach (var s in sessions)
+            {
+                try
+                {
+                    await remote.Host.KillAsync(id, s.TmuxName, CancellationToken.None);
+                }
+                catch (CodexGate.Remote.RemoteHostException)
+                {
+                }
+            }
         }
         return Results.NoContent();
     }
@@ -372,6 +387,15 @@ public static class AdminApi
             return Errors.Json(400, "duplicate_limit");
         }
 
+        var remoteSessions = input.RemoteMaxSessions ?? plan.RemoteMaxSessions;
+        var remoteMemory = input.RemoteMemoryMb ?? plan.RemoteMemoryMb;
+        if (remoteSessions is < 1 or > 20 || remoteMemory is < 0 or > 262_144)
+        {
+            return Errors.Json(400, "invalid_remote");
+        }
+        plan.RemoteEnabled = input.RemoteEnabled ?? plan.RemoteEnabled;
+        plan.RemoteMaxSessions = remoteSessions;
+        plan.RemoteMemoryMb = remoteMemory;
         plan.Name = name;
         plan.MaxConcurrency = concurrency;
         plan.AllowedModels = ModelPatterns.Join(models);
