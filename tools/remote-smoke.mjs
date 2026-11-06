@@ -64,14 +64,15 @@ console.log('started session', session.id);
 
 // Markers are split in the command text ("DATA-""READ") so only real output contains them, not the echoed command.
 const script = 'id -un; pwd; (cat /data/codexgate.db > /dev/null 2>&1 && echo DATA-"READABLE") || echo NO-DATA-"ACCESS"; ' +
-  "codex exec --skip-git-repo-check 'Say hello' 2>&1 | tail -n 3; echo DONE-$((40+2))\r";
+  "echo سلام-$((1+1)); codex exec --skip-git-repo-check 'Say hello' 2>&1 | tail -n 3; echo DONE-$((40+2))\r";
 const out = await terminal(mate, session.id, (ws) => ws.send(new TextEncoder().encode(script)), (o) => o.includes('DONE-42'), 120000);
 if (!out.includes('DONE-42')) fail('the command did not finish', out);
 if (!out.includes(`cg-${userId}`)) fail(`not running as cg-${userId}`, out);
 if (out.includes('DATA-READABLE') || !out.includes('NO-DATA-ACCESS')) fail('the session can read the gateway data', out);
 if (!out.includes('/home/cg-' + userId + '/work/demo')) fail('wrong working folder', out);
 if (!out.includes('Hello from the CodexGate mock upstream.')) fail('Codex did not answer through the gateway', out);
-console.log('ran as its own account, could not read /data, Codex answered through the gateway');
+if (!out.includes('سلام-2')) fail('Persian typed into the terminal did not come back intact', out);
+console.log('ran as its own account, could not read /data, Codex answered through the gateway, Persian typing intact');
 
 const usage = await admin('GET', `/api/admin/usage?userId=${userId}`);
 if (!usage.length) fail('no usage recorded for the server session');
