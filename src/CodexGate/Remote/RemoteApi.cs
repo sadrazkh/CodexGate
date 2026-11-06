@@ -187,23 +187,28 @@ public static partial class RemoteApi
             return;
         }
 
-        await using (link)
+        // The pump has its own token so leaving the loop below can always stop it: the link's output
+        // only ends when the session does, and waiting for that here would leave a dead socket and a
+        // tmux client behind for every closed browser tab.
+        using var pumpStop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var toBrowser = Task.Run(async () =>
         {
-            var toBrowser = Task.Run(async () =>
+            try
             {
-                try
+                await foreach (var chunk in link.Output.ReadAllAsync(pumpStop.Token))
                 {
-                    await foreach (var chunk in link.Output.ReadAllAsync(ct))
-                    {
-                        await socket.SendAsync(chunk, WebSocketMessageType.Binary, true, ct);
-                    }
-                    await CloseAsync(socket, "The session ended.");
+                    // Not cancelled mid-frame: that would abort the socket instead of closing it cleanly.
+                    await socket.SendAsync(chunk, WebSocketMessageType.Binary, true, CancellationToken.None);
                 }
-                catch (Exception ex) when (ex is OperationCanceledException or WebSocketException)
-                {
-                }
-            }, ct);
+                await CloseAsync(socket, "The session ended.");
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or WebSocketException or ObjectDisposedException)
+            {
+            }
+        }, CancellationToken.None);
 
+        try
+        {
             var buffer = new byte[64 * 1024];
             try
             {
@@ -242,17 +247,15 @@ public static partial class RemoteApi
             catch (Exception ex) when (ex is OperationCanceledException or WebSocketException or RemoteHostException or TimeoutException)
             {
             }
-            if (socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
-            {
-                await CloseAsync(socket, "Bye.");
-            }
-            try
-            {
-                await toBrowser;
-            }
-            catch (OperationCanceledException)
-            {
-            }
+        }
+        finally
+        {
+            // Stop sending first (one send at a time on a socket), then detach from the session, which
+            // keeps running, and only then answer the browser's close.
+            await pumpStop.CancelAsync();
+            await link.DisposeAsync();
+            await toBrowser;
+            await CloseAsync(socket, "Bye.");
         }
     }
 

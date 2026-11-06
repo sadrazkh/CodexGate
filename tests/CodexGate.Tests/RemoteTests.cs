@@ -263,6 +263,26 @@ public sealed class RemoteTests : IDisposable
     }
 
     [Fact]
+    public async Task Closing_the_browser_detaches_and_answers_the_close()
+    {
+        var (_, user, _, _) = await SetupAsync();
+        var id = (await GateFactory.JsonAsync(await StartAsync(user))).GetProperty("id").GetInt64();
+        using var ws = await ConnectAsync(user, id);
+        await ReceiveUntilAsync(ws, "welcome");
+        var link = _app.Remote.LastLink!;
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "tab closed", timeout.Token); // waits for the server's answer
+        Assert.Equal(WebSocketState.Closed, ws.State);
+        for (var i = 0; i < 50 && !link.Disposed; i++)
+        {
+            await Task.Delay(20);
+        }
+        Assert.True(link.Disposed); // the tmux client is let go; the session itself keeps running
+        Assert.True((await GateFactory.JsonAsync(await user.GetAsync("/api/remote/"))).GetProperty("sessions")[0].GetProperty("running").GetBoolean());
+    }
+
+    [Fact]
     public async Task Tickets_work_once_and_only_for_their_own_session()
     {
         var (admin, user, _, planId) = await SetupAsync();

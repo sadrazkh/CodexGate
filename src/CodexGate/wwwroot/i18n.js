@@ -48,7 +48,7 @@ window.CODEXGATE_I18N = {
     sessionName: "نام",
     sessionDefaultName: "جلسه‌ی {n}",
     sessionFolder: "پوشه",
-    sessionFolderHelp: "در ~/work روی سرور؛ اگر نباشد ساخته می‌شود",
+    sessionFolderHelp: "در ⁦~/work⁩ روی سرور؛ اگر نباشد ساخته می‌شود",
     program: "برنامه",
     programCodex: "Codex",
     programShell: "ترمینال",

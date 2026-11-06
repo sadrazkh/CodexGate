@@ -63,6 +63,12 @@ jobs:
           for i in $(seq 1 60); do curl -fsS http://127.0.0.1:8080/healthz && break; sleep 1; done
       - name: End to end through the web terminal
         run: node tools/remote-smoke.mjs http://127.0.0.1:8080 ci-admin-pass-1
+      - name: No terminal clients left behind
+        run: |
+          sleep 3
+          left=$(docker exec codexgate sh -c 'n=0; for f in /proc/[0-9]*/cmdline; do tr "\000" " " < "$f" 2>/dev/null | grep -q "tmux -L codexgate -C" && n=$((n+1)); done; echo $n')
+          echo "tmux control clients still running: $left"
+          test "$left" = "0"
       - name: Logs
         if: always()
         run: |
