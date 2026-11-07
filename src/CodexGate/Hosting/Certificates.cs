@@ -177,8 +177,23 @@ public sealed class AcmeIssuer(
         progress("certificate");
         var key = KeyFactory.NewKey(KeyAlgorithm.ES256);
         var chain = await order.Generate(new CsrInfo { CommonName = request.Domain }, key);
-        var certPem = chain.Certificate.ToPem() + string.Concat(chain.Issuers.Select(i => i.ToPem()));
-        return new IssuedCertificate(certPem, key.ToPem());
+        return new IssuedCertificate(ChainPem(chain), KeyPem(key));
+    }
+
+    /// <summary>
+    /// The chain as standard PEM, written from DER: Certes' own PEM text is not always what .NET's
+    /// X509Certificate2.CreateFromPem accepts.
+    /// </summary>
+    public static string ChainPem(CertificateChain chain) =>
+        string.Concat(new[] { chain.Certificate }.Concat(chain.Issuers)
+            .Select(c => new string(System.Security.Cryptography.PemEncoding.Write("CERTIFICATE", c.ToDer())) + "\n"));
+
+    /// <summary>The private key as PKCS#8 PEM, re-encoded by .NET from whatever Certes writes.</summary>
+    public static string KeyPem(IKey key)
+    {
+        using var ec = System.Security.Cryptography.ECDsa.Create();
+        ec.ImportFromPem(key.ToPem());
+        return ec.ExportPkcs8PrivateKeyPem() + "\n";
     }
 
     private IKey LoadOrCreateAccountKey()

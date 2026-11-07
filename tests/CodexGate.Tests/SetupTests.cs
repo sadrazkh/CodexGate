@@ -372,3 +372,29 @@ public sealed class RenewalTests : IDisposable
         Assert.True(certs.Current!.NotAfter > DateTime.Now.AddDays(60));
     }
 }
+
+public class AcmePemTests
+{
+    [Fact]
+    public void Certes_chains_and_keys_become_pem_that_dotnet_loads()
+    {
+        var key = Certes.KeyFactory.NewKey(Certes.KeyAlgorithm.ES256);
+        using var ec = ECDsa.Create();
+        ec.ImportFromPem(AcmeIssuer.KeyPem(key));
+        var req = new CertificateRequest("CN=codex.example.test", ec, HashAlgorithmName.SHA256);
+        using var leaf = req.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(30));
+        using var issuerKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var issuer = new CertificateRequest("CN=Test CA", issuerKey, HashAlgorithmName.SHA256)
+            .CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(30));
+        // What an ACME server sends: leaf then issuer, CRLF line ends.
+        var download = (leaf.ExportCertificatePem() + "\n" + issuer.ExportCertificatePem()).Replace("\n", "\r\n");
+        var chain = new Certes.Acme.CertificateChain(download);
+
+        var certPem = AcmeIssuer.ChainPem(chain);
+        var keyPem = AcmeIssuer.KeyPem(key);
+        using var loaded = CertificateStore.FromPem(certPem, keyPem);
+        Assert.Equal("CN=codex.example.test", loaded.Subject);
+        Assert.True(loaded.HasPrivateKey);
+        Assert.Equal(2, certPem.Split("BEGIN CERTIFICATE").Length - 1);
+    }
+}

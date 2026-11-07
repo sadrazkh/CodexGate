@@ -94,7 +94,27 @@ flowchart LR
 
 ## Quick start
 
-### Docker
+### On a Linux server, with one command
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/sadrazkh/CodexGate/main/install.sh)
+```
+
+The installer sets up Docker if needed, builds CodexGate (server sessions included) and starts it, using
+**only ports that are free**: if x-ui or a web server already owns 443 or 80, they are left alone. It prints
+one private link to a setup page:
+
+1. choose the admin username and password;
+2. enter your domain (point its A record at the server first);
+3. pick how to get the Let’s Encrypt certificate: **port 80** if it was free, or **Cloudflare DNS** with an
+   API token (needs no port at all);
+4. optionally paste your OpenAI key (it can also be set later in Settings).
+
+The certificate is obtained, the panel moves to `https://your-domain:8443` and the setup page closes. The
+certificate renews itself. Run the same command again to update; your data is kept. Options:
+`--https-port 443` (if it is free), `--setup-port N`, `--memory 16g` (default: 60% of the server’s memory).
+
+### Docker by hand
 
 ```bash
 docker build -t codexgate .
