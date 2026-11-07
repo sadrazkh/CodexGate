@@ -28,9 +28,10 @@ function secure(method, path, body, cookie) {
       host: '127.0.0.1', port: Number(httpsPort), servername: domain, path, method, rejectUnauthorized: false,
       headers: { Host: `${domain}:${httpsPort}`, 'X-CodexGate': '1', 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
     }, (res) => {
+      const cert = res.socket.getPeerCertificate(); // read now: the socket is gone by 'end'
       let data = '';
       res.on('data', (c) => { data += c; });
-      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: data, cert: res.socket.getPeerCertificate?.() }));
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: data, cert }));
     });
     req.on('error', reject);
     if (body) req.write(JSON.stringify(body));
