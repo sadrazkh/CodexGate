@@ -44,6 +44,40 @@ public sealed class GateOptions
 
     /// <summary>Codex sessions on this server (needs Linux, tmux, Codex and the root helper; see docs/remote.md).</summary>
     public RemoteOptions Remote { get; set; } = new();
+
+    /// <summary>Installed by install.sh: the app owns its ports, runs the setup page, and gets its own certificate.</summary>
+    public ManagedOptions Managed { get; set; } = new();
+}
+
+public sealed class ManagedOptions
+{
+    // Ports inside the container; install.sh maps the server's ports onto them.
+    public const int InternalPort = 8080; // loopback only: Codex in server sessions
+    public const int HttpPort = 8081;     // the server's port 80: ACME HTTP-01 and a redirect to HTTPS
+    public const int SetupPort = 8082;    // the one-time setup page
+    public const int HttpsPort = 8443;    // the panel and the gateway
+
+    public bool Enabled { get; set; }
+
+    /// <summary>Opens the setup page; printed once by the installer, compared in constant time.</summary>
+    public string SetupToken { get; set; } = "";
+
+    /// <summary>The server port mapped to HttpsPort (shown in addresses).</summary>
+    public int PublicHttpsPort { get; set; } = 8443;
+
+    /// <summary>Whether the server's port 80 is mapped to HttpPort, so HTTP-01 can work.</summary>
+    public bool HttpChallengeAvailable { get; set; }
+
+    /// <summary>The server's public IP, as the installer saw it; used to check the domain's DNS.</summary>
+    public string PublicIp { get; set; } = "";
+
+    public string AcmeDirectory { get; set; } = "https://acme-v02.api.letsencrypt.org/directory";
+
+    /// <summary>Trust any TLS certificate of the ACME server. Only for a test CA such as Pebble.</summary>
+    public bool AcmeInsecureTls { get; set; }
+
+    /// <summary>How long to let a new DNS-01 TXT record spread before asking for validation.</summary>
+    public int DnsWaitSeconds { get; set; } = 20;
 }
 
 public sealed class RemoteOptions

@@ -236,3 +236,11 @@ a.btn.small { padding: .2rem .65rem; font-size: .85rem; }
   .nav { order: 3; flex-basis: 100%; }
   main { padding: 1rem .8rem 2rem; }
 }
+
+/* setup page */
+.login.setup { max-width: 560px; }
+.setup h3 { margin-top: 1.2rem; }
+.setup .method-note { display: block; margin: -.4rem 0 .6rem; padding-inline-start: 1.6rem; }
+.dns-note { display: block; margin: -.5rem 0 .6rem; color: var(--muted); font-size: .85rem; }
+ul.setup-steps { list-style: none; padding: 0; margin: .4rem 0 1rem; }
+ul.setup-steps li { padding: .15rem 0; color: var(--ok); }

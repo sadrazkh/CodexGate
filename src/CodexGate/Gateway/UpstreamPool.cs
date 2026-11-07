@@ -1,14 +1,38 @@
+using CodexGate.Data;
 using Microsoft.Extensions.Options;
 
 namespace CodexGate.Gateway;
 
-/// <summary>The configured model APIs, with live counters for picking the least busy one.</summary>
+/// <summary>
+/// The model APIs: those in configuration, plus the OpenAI key saved from the setup page or the
+/// panel's settings. Live counters pick the least busy one.
+/// </summary>
 public sealed class UpstreamPool
 {
-    private readonly Lock _lock = new();
+    public const string SavedKeyName = "openai";
+    public static readonly Uri OpenAiBase = new("https://api.openai.com/v1/");
 
-    public UpstreamPool(IOptions<GateOptions> options, ILogger<UpstreamPool> log)
+    private readonly Lock _lock = new();
+    private readonly IOptions<GateOptions> _options;
+    private readonly SettingsStore _settings;
+    private readonly ILogger<UpstreamPool> _log;
+    private List<Upstream> _all = [];
+
+    public UpstreamPool(IOptions<GateOptions> options, SettingsStore settings, ILogger<UpstreamPool> log)
     {
+        _options = options;
+        _settings = settings;
+        _log = log;
+        Reload(settings.GetAllAsync().GetAwaiter().GetResult().GetValueOrDefault(SettingsStore.OpenAiKey));
+    }
+
+    /// <summary>Rebuilds the list after the saved key changed; requests in flight keep their upstream.</summary>
+    public async Task ReloadAsync() => Reload((await _settings.GetAllAsync()).GetValueOrDefault(SettingsStore.OpenAiKey));
+
+    private void Reload(string? savedKey)
+    {
+        var options = _options;
+        var log = _log;
         var list = new List<Upstream>();
         var index = 0;
         foreach (var o in options.Value.Upstreams)
@@ -32,21 +56,37 @@ public sealed class UpstreamPool
                 o.Models.SelectMany(ModelPatterns.Parse).ToList(),
                 new Dictionary<string, string>(o.Headers, StringComparer.OrdinalIgnoreCase)));
         }
-        All = list;
+        if (!string.IsNullOrWhiteSpace(savedKey))
+        {
+            list.Add(new Upstream(SavedKeyName, OpenAiBase, savedKey.Trim(), [], new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)));
+        }
+        lock (_lock)
+        {
+            _all = list;
+        }
         if (list.Count == 0)
         {
-            log.LogWarning("No upstream is configured; Codex requests will get 503 until Gate:Upstreams is set");
+            log.LogWarning("No model API yet: add an OpenAI key in Settings or set Gate:Upstreams");
         }
     }
 
-    public IReadOnlyList<Upstream> All { get; }
+    public IReadOnlyList<Upstream> All
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _all;
+            }
+        }
+    }
 
     /// <summary>Upstreams that serve the model, least busy first, config order breaking ties.</summary>
     public List<Upstream> CandidatesFor(string model)
     {
         lock (_lock)
         {
-            return All
+            return _all
                 .Select((u, i) => (u, i))
                 .Where(x => ModelPatterns.Allowed(x.u.Models, model))
                 .OrderBy(x => x.u.InFlight)

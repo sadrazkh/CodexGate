@@ -74,3 +74,50 @@ jobs:
         run: |
           docker logs codexgate
           cat mock.log || true
+
+  install:
+    name: install.sh on a server whose port 443 is taken
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Something else already owns port 443 (stands in for x-ui)
+        run: |
+          docker run -d --name other443 -p 443:80 nginx:alpine
+          for i in $(seq 1 20); do curl -fsS http://127.0.0.1:443/ >/dev/null && break; sleep 1; done
+      - name: A test certificate authority (Pebble) that really checks HTTP-01 on port 80
+        run: |
+          cat > pebble.json <<'JSON'
+          {"pebble": {"listenAddress": "0.0.0.0:14000", "managementListenAddress": "0.0.0.0:15000",
+            "certificate": "/test/certs/localhost/cert.pem", "privateKey": "/test/certs/localhost/key.pem",
+            "httpPort": 80, "tlsPort": 5001, "ocspResponderURL": "", "externalAccountBindingRequired": false}}
+          JSON
+          docker run -d --name challtestsrv --network host ghcr.io/letsencrypt/pebble-challtestsrv:latest \
+            -defaultIPv4 127.0.0.1 -defaultIPv6 ""
+          docker run -d --name pebble --network host -e PEBBLE_VA_NOSLEEP=1 -e PEBBLE_WFE_NONCEREJECT=0 \
+            -v "$PWD/pebble.json:/pebble.json:ro" ghcr.io/letsencrypt/pebble:latest -config /pebble.json -dnsserver 127.0.0.1:8053
+          for i in $(seq 1 30); do curl -fsSk https://127.0.0.1:14000/dir >/dev/null && break; sleep 1; done
+      - name: Run install.sh
+        run: |
+          sudo bash install.sh --yes --source . --setup-port 39000 --https-port 9443 \
+            --env Gate__Managed__AcmeDirectory=https://host.docker.internal:14000/dir \
+            --env Gate__Managed__AcmeInsecureTls=true \
+            --docker-arg --add-host=host.docker.internal:host-gateway
+      - name: Finish setup through the page and check HTTPS
+        run: node tools/install-smoke.mjs 39000 9443 codex.test "$(sudo sed -n 's/^SETUP_TOKEN=//p' /etc/codexgate/install.env)"
+      - name: Port 443's owner was not touched
+        run: curl -fsS http://127.0.0.1:443/ | grep -qi nginx && echo "port 443 still serves its own app"
+      - name: Running install.sh again updates in place and keeps HTTPS
+        run: |
+          sudo bash install.sh --yes --source . \
+            --env Gate__Managed__AcmeDirectory=https://host.docker.internal:14000/dir \
+            --env Gate__Managed__AcmeInsecureTls=true \
+            --docker-arg --add-host=host.docker.internal:host-gateway
+          curl -fsSk --resolve codex.test:9443:127.0.0.1 https://codex.test:9443/healthz
+      - name: Logs
+        if: always()
+        run: |
+          docker logs codexgate || true
+          docker logs pebble 2>&1 | tail -n 40 || true

@@ -67,11 +67,16 @@ public static class AdminApi
         admin.MapGet("/prices", async (PriceStore prices) => Results.Ok(await prices.ListAsync()));
         admin.MapPut("/prices", SavePricesAsync);
 
-        admin.MapGet("/settings", async (SettingsStore settings, HttpContext ctx) =>
+        admin.MapGet("/settings", async (SettingsStore settings, HttpContext ctx, CodexGate.Hosting.CertificateStore certs, UpstreamPool pool) =>
         {
             var all = await settings.GetAllAsync();
+            var savedKey = all.GetValueOrDefault(SettingsStore.OpenAiKey);
+            var cert = certs.Current;
             return Results.Ok(new
             {
+                openAiKey = string.IsNullOrEmpty(savedKey) ? null : "…" + savedKey[^Math.Min(4, savedKey.Length)..],
+                configuredUpstreams = pool.All.Count(u => u.Name != UpstreamPool.SavedKeyName),
+                certificate = cert is null ? null : new { domain = all.GetValueOrDefault(SettingsStore.Domain), expires = new DateTimeOffset(cert.NotAfter.ToUniversalTime()).ToUnixTimeMilliseconds() },
                 defaultModel = all.GetValueOrDefault(SettingsStore.DefaultModel) ?? "",
                 publicUrl = all.GetValueOrDefault(SettingsStore.PublicUrl) ?? "",
                 allowWebSearch = all.GetValueOrDefault(SettingsStore.AllowWebSearch) == "1",
@@ -429,8 +434,13 @@ public static class AdminApi
         return Results.NoContent();
     }
 
-    private static async Task<IResult> SaveSettingsAsync(SettingsInput input, SettingsStore settings)
+    private static async Task<IResult> SaveSettingsAsync(SettingsInput input, SettingsStore settings, UpstreamPool pool)
     {
+        var key = input.OpenAiKey?.Trim();
+        if (key is not null && (key.Length > 400 || key.Any(char.IsWhiteSpace)))
+        {
+            return Errors.Json(400, "invalid_key");
+        }
         var model = (input.DefaultModel ?? "").Trim();
         if (model.Length > 0 && (!ModelPatterns.IsValid(model) || model.Contains('*')))
         {
@@ -461,6 +471,12 @@ public static class AdminApi
         if (input.WebSearchPrice is { } p)
         {
             await settings.SetAsync(SettingsStore.WebSearchPrice, p.ToString("R", CultureInfo.InvariantCulture));
+        }
+        if (key is not null)
+        {
+            // Empty removes the saved key; null (not sent) leaves it alone.
+            await settings.SetAsync(SettingsStore.OpenAiKey, key);
+            await pool.ReloadAsync();
         }
         return Results.NoContent();
     }

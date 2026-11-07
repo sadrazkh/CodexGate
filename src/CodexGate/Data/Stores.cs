@@ -256,6 +256,12 @@ public sealed class SettingsStore(Database db)
     public const string AllowWebSearch = "allow_web_search";
     public const string WebSearchPrice = "web_search_price";
     public const string InstanceSecret = "instance_secret";
+    public const string OpenAiKey = "openai_key";
+    public const string SetupDone = "setup_done";
+    public const string Domain = "domain";
+    public const string CertMethod = "cert_method";
+    public const string CloudflareToken = "cloudflare_token";
+    public const string AcmeEmail = "acme_email";
     public const double DefaultWebSearchPrice = 0.01;
 
     public async Task<Dictionary<string, string>> GetAllAsync()

@@ -949,6 +949,7 @@
     if (!alive()) return;
     const publicUrl = input({ dir: 'ltr', value: s.publicUrl, placeholder: 'https://codex.example.com' });
     const defaultModel = input({ dir: 'ltr', value: s.defaultModel, placeholder: 'gpt-5.5' });
+    const openAiKey = input({ type: 'password', dir: 'ltr', autocomplete: 'off', placeholder: s.openAiKey ? t('keySaved', { end: s.openAiKey }) : 'sk-...' });
     const allowSearch = h('input', { type: 'checkbox', checked: s.allowWebSearch });
     const searchPrice = input({ type: 'number', min: '0', max: '10', step: 'any', dir: 'ltr', value: String(s.webSearchPrice) });
     const saveSettings = h('button', { class: 'primary', type: 'submit' }, t('save'));
@@ -956,15 +957,19 @@
       onsubmit: (e) => {
         e.preventDefault();
         guarded(saveSettings, async () => {
-          await api('PUT', '/api/admin/settings', {
+          const body = {
             publicUrl: publicUrl.value, defaultModel: defaultModel.value,
             allowWebSearch: allowSearch.checked, webSearchPrice: Number(searchPrice.value),
-          });
+          };
+          if (openAiKey.value.trim()) body.openAiKey = openAiKey.value.trim();
+          await api('PUT', '/api/admin/settings', body);
           toast(t('saved'));
           render();
         });
       },
     },
+    field(t('openAiKey'), openAiKey, s.openAiKey ? t('openAiKeyHelpSaved') : (s.configuredUpstreams ? t('openAiKeyHelpServer') : t('openAiKeyHelpNone'))),
+    s.certificate ? h('p', { class: 'small muted' }, t('certificateInfo', { domain: s.certificate.domain || '', date: fmtDay(s.certificate.expires) })) : null,
     field(t('publicUrl'), publicUrl, t('publicUrlHelp', { url: s.effectiveBaseUrl })),
     field(t('defaultModel'), defaultModel, t('defaultModelHelp')),
     h('h3', null, t('webSearch')),

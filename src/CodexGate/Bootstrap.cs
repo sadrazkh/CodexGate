@@ -25,6 +25,10 @@ public static class Bootstrap
             return;
         }
         var options = services.GetRequiredService<IOptions<GateOptions>>().Value;
+        if (options.Managed.Enabled && string.IsNullOrWhiteSpace(options.AdminPassword))
+        {
+            return; // installed with install.sh: the setup page creates the admin
+        }
         var log = services.GetRequiredService<ILoggerFactory>().CreateLogger("CodexGate.Bootstrap");
         var time = services.GetRequiredService<TimeProvider>();
 
@@ -84,6 +88,14 @@ public static class Bootstrap
         {
             log.LogInformation("Created admin \"{User}\" from Gate:AdminPassword", username);
         }
+    }
+
+    /// <summary>The data folder; Program makes it absolute against the content root at startup.</summary>
+    public static string DataDirOf(GateOptions options)
+    {
+        var dir = Path.GetFullPath(options.DataDir);
+        Directory.CreateDirectory(dir);
+        return dir;
     }
 
     public static string DataDir(GateOptions options, IServiceProvider services)

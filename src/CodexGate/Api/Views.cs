@@ -15,7 +15,8 @@ public sealed record PlanInput(
     bool? RemoteEnabled = null, int? RemoteMaxSessions = null, int? RemoteMemoryMb = null);
 public sealed record LimitInput(int WindowHours, string? Kind, double Amount);
 public sealed record PriceInput(string? Model, double InputPerM, double CachedPerM, double OutputPerM);
-public sealed record SettingsInput(string? DefaultModel, string? PublicUrl, bool? AllowWebSearch = null, double? WebSearchPrice = null);
+public sealed record SettingsInput(
+    string? DefaultModel, string? PublicUrl, bool? AllowWebSearch = null, double? WebSearchPrice = null, string? OpenAiKey = null);
 
 public sealed record WindowView(int WindowHours, string Kind, double Amount, double Used, double Percent, bool Exhausted, long? FreesAt)
 {

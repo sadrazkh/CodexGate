@@ -108,6 +108,7 @@ public sealed class GateFactory : WebApplicationFactory<Program>
     public string DataDir { get; } = Path.Combine(Path.GetTempPath(), "codexgate-tests-" + Guid.NewGuid().ToString("N"));
     public FakeUpstream Upstream { get; } = new();
     public FakeRemoteHost Remote { get; } = new();
+    public Action<IServiceCollection>? ExtraServices { get; set; }
     public ManualClock Clock { get; } = new();
     public Dictionary<string, string?> Settings { get; } = new()
     {
@@ -135,6 +136,7 @@ public sealed class GateFactory : WebApplicationFactory<Program>
         {
             services.AddSingleton<TimeProvider>(Clock);
             services.AddSingleton<CodexGate.Remote.IRemoteHost>(Remote);
+            ExtraServices?.Invoke(services);
             services.AddHttpClient(GatewayHandler.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => Upstream);
         });
     }
