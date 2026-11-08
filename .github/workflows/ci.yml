@@ -109,12 +109,27 @@ jobs:
         run: node tools/install-smoke.mjs 39000 9443 codex.test "$(sudo sed -n 's/^SETUP_TOKEN=//p' /etc/codexgate/install.env)"
       - name: Port 443's owner was not touched
         run: curl -fsS http://127.0.0.1:443/ | grep -qi nginx && echo "port 443 still serves its own app"
-      - name: Running install.sh again updates in place and keeps HTTPS
+      - name: Running install.sh again updates in place, even when its terminal dies half way
         run: |
-          sudo bash install.sh --yes --source . \
+          LOG=/var/log/codexgate-install.log
+          sudo rm -f "$LOG"
+          # A real terminal (script holds the pty) with a shell above the installer, like an SSH login.
+          sudo script -qfc "bash install.sh --yes --source . \
             --env Gate__Managed__AcmeDirectory=https://host.docker.internal:14000/dir \
             --env Gate__Managed__AcmeInsecureTls=true \
-            --docker-arg --add-host=host.docker.internal:host-gateway
+            --docker-arg --add-host=host.docker.internal:host-gateway; true" /dev/null > /dev/null &
+          for i in $(seq 1 60); do sudo grep -q "Updating the existing" "$LOG" 2>/dev/null && break; sleep 0.5; done
+          sudo grep -q "Updating the existing" "$LOG"
+          pid=$(sudo cat /run/codexgate-install.pid)
+          sudo pkill -KILL -x script
+          sleep 1
+          sudo kill -0 "$pid"
+          echo "the installer outlived its terminal"
+          sudo bash install.sh --yes --source . | tee follow.txt
+          grep -q "already running" follow.txt
+          grep -q "updated and running" follow.txt
+          [ "$(sudo stat -c %a "$LOG")" = 600 ]
+          sudo test ! -e /run/codexgate-install.pid
           curl -fsSk --resolve codex.test:9443:127.0.0.1 https://codex.test:9443/healthz
       - name: Logs
         if: always()

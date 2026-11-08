@@ -100,6 +100,9 @@ flowchart LR
 bash <(curl -fsSL https://raw.githubusercontent.com/sadrazkh/CodexGate/main/install.sh)
 ```
 
+If your connection drops during the install, it keeps going on the server. After reconnecting, read its
+output, including the setup link, with `tail -n 20 /var/log/codexgate-install.log`.
+
 The installer sets up Docker if needed, builds CodexGate (server sessions included) and starts it, using
 **only ports that are free**: if x-ui or a web server already owns 443 or 80, they are left alone. It prints
 one private link to a setup page:

@@ -7,6 +7,7 @@
 # one-time link to the setup page, where you choose the admin, the domain and the certificate.
 # It never touches ports or services that are already in use (x-ui, a web server, ...): busy ports
 # are left alone and only free ones are taken. Run it again to update; your data is kept.
+# If your SSH connection drops, it keeps going; its output is in /var/log/codexgate-install.log.
 #
 # Options:
 #   --https-port N     server port for the panel (default 8443; 443 if you want and it is free)
@@ -26,6 +27,8 @@ CONF_DIR=/etc/codexgate
 CONF=$CONF_DIR/install.env
 NAME=codexgate
 IMAGE=codexgate-remote
+LOG=/var/log/codexgate-install.log
+PID_FILE=/run/codexgate-install.pid
 HTTPS_PORT=""
 SETUP_PORT=""
 MEMORY=""
@@ -55,6 +58,29 @@ done
 
 [[ $EUID -eq 0 ]] || die "Run as root (sudo bash install.sh)."
 command -v ss >/dev/null || die "The 'ss' command is missing (package iproute2)."
+
+# --- a dropped connection must not stop the install -------------------------------------------
+# A second run while one is going just shows it, so reconnecting and running this again is safe.
+if [[ -f "$PID_FILE" ]] && running=$(<"$PID_FILE") && kill -0 "$running" 2>/dev/null; then
+  say "An install is already running (pid $running); showing its output until it ends."
+  exec tail -n +1 --pid="$running" -f "$LOG"
+fi
+echo $$ > "$PID_FILE"
+# SIGHUP stays ignored in every child. Output goes through tee, which carries on with the log alone
+# once the terminal is gone, so nothing here ever writes to a dead terminal and fails.
+trap '' HUP
+install -m 600 /dev/null "$LOG" # root-only: it will hold the setup link
+exec > >(tee -a -p "$LOG") 2>&1
+TEE_PID=$!
+[[ -t 0 ]] && exec </dev/null # questions read /dev/tty; children must not read a terminal that may die
+finish() {
+  rm -f "$PID_FILE"
+  exec >&- 2>&-
+  # Let the last lines reach the screen, but never hang on a daemon that inherited the pipe.
+  for _ in $(seq 1 30); do kill -0 "$TEE_PID" 2>/dev/null || break; sleep 0.1; done
+}
+trap finish EXIT
+say "If your connection drops, the install goes on. To see it after reconnecting: tail -f $LOG"
 
 port_busy() { ss -Hltn "sport = :$1" 2>/dev/null | grep -q .; }
 valid_port() { [[ "$1" =~ ^[0-9]+$ ]] && (( $1 >= 1 && $1 <= 65535 )); }
