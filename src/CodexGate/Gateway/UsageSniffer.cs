@@ -30,6 +30,9 @@ public sealed class UsageSniffer
 
     public bool SawTerminalEvent { get; private set; }
 
+    /// <summary>The model the upstream says answered (from response.created or the final event).</summary>
+    public string? Model { get; private set; }
+
     /// <summary>Hosted web searches: "web_search_call" items in the final response, or their completion events.</summary>
     public long WebSearchCalls => Math.Max(_searchesInOutput, _searchEvents);
 
@@ -78,8 +81,9 @@ public sealed class UsageSniffer
         }
         if (!_overflow && _buffer.Length > 0)
         {
-            var usage = TryReadUsage(_buffer.GetBuffer().AsSpan(0, (int)_buffer.Length), sse: false, out var searches);
+            var usage = TryReadUsage(_buffer.GetBuffer().AsSpan(0, (int)_buffer.Length), sse: false, out var searches, out var model);
             Usage ??= usage;
+            Model ??= model;
             _searchesInOutput = Math.Max(_searchesInOutput, searches);
         }
     }
@@ -134,10 +138,17 @@ public sealed class UsageSniffer
             _searchEvents++;
             return;
         }
+        if (type == "response.created")
+        {
+            TryReadUsage(payload, sse: true, out _, out var first);
+            Model ??= first;
+            return;
+        }
         if (type is "response.completed" or "response.incomplete" or "response.failed" or "response.done")
         {
             SawTerminalEvent = true;
-            Usage = TryReadUsage(payload, sse: true, out var searches) ?? Usage;
+            Usage = TryReadUsage(payload, sse: true, out var searches, out var model) ?? Usage;
+            Model = model ?? Model;
             _searchesInOutput = Math.Max(_searchesInOutput, searches);
         }
     }
@@ -176,9 +187,10 @@ public sealed class UsageSniffer
         return null;
     }
 
-    private static TokenUsage? TryReadUsage(ReadOnlySpan<byte> json, bool sse, out long searches)
+    private static TokenUsage? TryReadUsage(ReadOnlySpan<byte> json, bool sse, out long searches, out string? model)
     {
         searches = 0;
+        model = null;
         try
         {
             using var doc = JsonDocument.Parse(json.ToArray());
@@ -193,6 +205,10 @@ public sealed class UsageSniffer
                 {
                     root = response;
                 }
+            }
+            if (root.TryGetProperty("model", out var m) && m.ValueKind == JsonValueKind.String)
+            {
+                model = m.GetString();
             }
             if (root.TryGetProperty("output", out var output) && output.ValueKind == JsonValueKind.Array)
             {

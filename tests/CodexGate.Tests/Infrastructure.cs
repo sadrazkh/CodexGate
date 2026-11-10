@@ -122,6 +122,7 @@ public sealed class GateFactory : WebApplicationFactory<Program>
         ["Gate:Upstreams:1:Name"] = "backup",
         ["Gate:Upstreams:1:BaseUrl"] = "https://up2.test/v1/",
         ["Gate:Upstreams:1:ApiKey"] = "sk-upstream-two",
+        ["Gate:ChatGpt:BaseUrl"] = "https://chatgpt.test/backend-api/codex",
     };
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)

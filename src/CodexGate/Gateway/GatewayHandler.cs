@@ -23,6 +23,7 @@ public sealed partial class GatewayHandler(
     UserStore users,
     PlanStore plans,
     KeyStore keys,
+    DeviceStore devices,
     UsageStore usage,
     PriceStore prices,
     SettingsStore settings,
@@ -49,17 +50,24 @@ public sealed partial class GatewayHandler(
         "Content-Type", "Cache-Control", "x-request-id", "Retry-After",
     };
 
-    private sealed record Caller(UserRow User, PlanRow Plan, ApiKeyRow Key);
+    private sealed record Caller(UserRow User, PlanRow Plan, ApiKeyRow Key, DeviceRow? Device);
 
     public async Task ProxyAsync(HttpContext ctx, string path, bool requireStream)
     {
         var now = Now();
-        var caller = await AuthenticateAsync(ctx, now);
+        var caller = await AuthenticateAsync(ctx, now, BearerToken(ctx));
         if (caller is null)
         {
             return;
         }
         var plan = caller.Plan;
+        if (plan.OwnLogin)
+        {
+            await OpenAiError.WriteAsync(ctx, 403, "own_login_plan",
+                "Your plan uses your own ChatGPT sign-in, not this gateway's API key. Set Codex up again from the CodexGate panel.",
+                "permission_error");
+            return;
+        }
 
         // The slot is taken before the body is read, so a user cannot pile up uploads in memory.
         switch (concurrency.TryEnter(caller.User.Id, plan.MaxConcurrency, options.Value.MaxConcurrentRequests))
@@ -128,24 +136,56 @@ public sealed partial class GatewayHandler(
         // Requests already running count too, at this user's recent average, so parallel requests
         // cannot all slip in under a nearly full limit.
         var othersRunning = Math.Max(0, concurrency.Current(caller.User.Id) - 1);
-        var windows = await quota.EvaluateAsync(caller.User, plan.Limits, now, othersRunning);
+        var windows = await WindowsAsync(caller, now, othersRunning);
         AddQuotaHeaders(ctx.Response, windows, now);
-        var full = windows.FirstOrDefault(w => w.Exhausted);
-        if (full is not null)
+        if (await StopIfFullAsync(ctx, windows, now))
         {
-            await OpenAiError.QuotaAsync(ctx, QuotaMessage(full), full.FreesAt, now);
             return;
         }
 
         await ForwardAsync(ctx, caller, path, accepted.Body, model, price, allowWebSearch ? webSearchPrice : 0, now);
     }
 
+    /// <summary>The plan's windows and the device's own, plan first.</summary>
+    private async Task<List<WindowStatus>> WindowsAsync(Caller caller, long now, int othersRunning)
+    {
+        var windows = await quota.EvaluateAsync(caller.User, caller.Plan.Limits, now, othersRunning);
+        if (caller.Device is { } device)
+        {
+            windows.AddRange(await quota.EvaluateDeviceAsync(device, now));
+        }
+        return windows;
+    }
+
+    private static async Task<bool> StopIfFullAsync(HttpContext ctx, List<WindowStatus> windows, long now)
+    {
+        var full = windows.FirstOrDefault(w => w.Exhausted);
+        if (full is null)
+        {
+            return false;
+        }
+        await OpenAiError.QuotaAsync(ctx, QuotaMessage(full), full.FreesAt, now);
+        return true;
+    }
+
+    private static string? BearerToken(HttpContext ctx)
+    {
+        var header = ctx.Request.Headers.Authorization.ToString();
+        return header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? header[7..].Trim() : null;
+    }
+
     public async Task ModelsAsync(HttpContext ctx)
     {
         var now = Now();
-        var caller = await AuthenticateAsync(ctx, now);
+        var caller = await AuthenticateAsync(ctx, now, BearerToken(ctx));
         if (caller is null)
         {
+            return;
+        }
+        if (caller.Plan.OwnLogin)
+        {
+            await OpenAiError.WriteAsync(ctx, 403, "own_login_plan",
+                "Your plan uses your own ChatGPT sign-in, not this gateway's API key.", "permission_error");
             return;
         }
         var upstream = pool.All.FirstOrDefault();
@@ -186,10 +226,8 @@ public sealed partial class GatewayHandler(
         }
     }
 
-    private async Task<Caller?> AuthenticateAsync(HttpContext ctx, long now)
+    private async Task<Caller?> AuthenticateAsync(HttpContext ctx, long now, string? token)
     {
-        var header = ctx.Request.Headers.Authorization.ToString();
-        var token = header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? header[7..].Trim() : null;
         ApiKeyRow? key = null;
         if (ApiKeys.LooksLikeKey(token))
         {
@@ -217,7 +255,8 @@ public sealed partial class GatewayHandler(
             return null;
         }
         await keys.TouchAsync(key.Id, now);
-        return new Caller(user, plan!, key);
+        var device = key.DeviceId is { } deviceId ? await devices.GetAsync(deviceId) : null;
+        return new Caller(user, plan!, key, device is not null && device.UserId == user.Id ? device : null);
     }
 
     private async Task<ReadOnlyMemory<byte>?> ReadBodyAsync(HttpContext ctx)
@@ -385,7 +424,7 @@ public sealed partial class GatewayHandler(
         {
             await RelayErrorAsync(ctx, response, upstreamCts.Token);
             pool.End(upstream);
-            await RecordAsync(caller, upstream, path, model, price, webSearchPrice, status, null, body.Length, 0, false, started, now);
+            await RecordAsync(caller, upstream.Name, path, model, price, webSearchPrice, status, null, body.Length, 0, false, started, now);
             return;
         }
 
@@ -447,7 +486,7 @@ public sealed partial class GatewayHandler(
             response.Dispose();
         }
 
-        await RecordAsync(caller, upstream, path, model, price, webSearchPrice, status, sniffer, body.Length, streamed, isSse, started, now);
+        await RecordAsync(caller, upstream.Name, path, model, price, webSearchPrice, status, sniffer, body.Length, streamed, isSse, started, now);
     }
 
     /// <summary>Upstream errors go back with any organization, project or key ids blanked out.</summary>
@@ -501,7 +540,7 @@ public sealed partial class GatewayHandler(
     private static partial Regex SecretIds();
 
     private async Task RecordAsync(
-        Caller caller, UpstreamPool.Upstream upstream, string path, string model, PriceRow? price, double webSearchPrice,
+        Caller caller, string upstream, string path, string model, PriceRow? price, double webSearchPrice,
         int status, UsageSniffer? sniffer, long requestBytes, long responseBytes, bool isSse, long started, long now)
     {
         TokenUsage tokens;
@@ -534,8 +573,9 @@ public sealed partial class GatewayHandler(
             KeyId = caller.Key.Id,
             At = now,
             Model = model,
-            Upstream = upstream.Name,
+            Upstream = upstream,
             Endpoint = path,
+            DeviceId = caller.Device?.Id,
             Status = status,
             InputTokens = tokens.Input,
             CachedTokens = tokens.Cached,
@@ -623,7 +663,8 @@ public sealed partial class GatewayHandler(
             ? $"${w.Used.ToString("0.00", CultureInfo.InvariantCulture)} of ${w.Amount.ToString("0.00", CultureInfo.InvariantCulture)}"
             : $"{w.Used.ToString("N0", CultureInfo.InvariantCulture)} of {w.Amount.ToString("N0", CultureInfo.InvariantCulture)} tokens";
         var frees = w.FreesAt is { } at ? $" It starts freeing up at {Utc(at)}." : "";
-        return $"Your {window} quota is used up ({amounts}).{frees}";
+        var whose = w.Device is { } device ? $"The {window} limit you set for \"{device}\"" : $"Your {window} quota";
+        return $"{whose} is used up ({amounts}).{frees}";
     }
 
     private static string Utc(long ms) =>
@@ -676,5 +717,9 @@ public static class GatewayEndpoints
         v1.MapGet("/models", (HttpContext ctx, GatewayHandler h) => h.ModelsAsync(ctx));
         v1.Map("/{**rest}", (HttpContext ctx) => OpenAiError.WriteAsync(ctx, 404, "not_found",
             "This gateway serves POST /v1/responses and GET /v1/models only."));
+
+        // Plans with "own ChatGPT login": Codex sends its ChatGPT sign-in, the gateway key rides in a header.
+        var chatgpt = app.MapGroup("/chatgpt/v1").RequireRateLimiting(RateLimitPolicy);
+        chatgpt.Map("/{**rest}", (HttpContext ctx, string? rest, GatewayHandler h) => h.RelayChatGptAsync(ctx, rest ?? ""));
     }
 }

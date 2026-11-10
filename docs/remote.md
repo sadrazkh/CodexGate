@@ -21,8 +21,8 @@ teammate's plan limits apply.
   nothing to a shell.
 - The browser terminal connects with a one-time ticket that expires after 60 seconds. Getting a
   ticket needs the panel cookie and the CSRF header.
-- Each server account has its own gateway key, named “Server sessions”. Revoking it stops server
-  sessions until the next start, which makes a new one.
+- Every session has a gateway key of its own, kept in a file only that account can read and never on a
+  command line. It is revoked when the session is removed, and its usage shows on the session’s row.
 
 ## Run it with Docker (simplest)
 
@@ -62,6 +62,23 @@ Gate__Remote__GatewayUrl=http://127.0.0.1:8080/v1   # how Codex in a session rea
 
 With systemd, a plan’s **memory cap** is enforced per user: each account’s sessions run in a scope
 under `codexgate.slice` with `MemoryMax`.
+
+## Your own ChatGPT login
+
+On a plan with **Users sign in to Codex with their own ChatGPT account**, sessions use the user’s own ChatGPT
+subscription instead of the owner’s API key. The first time, start a **Terminal** session and run:
+
+```bash
+codex login --device-auth
+```
+
+Open the link it shows on a phone or laptop and sign in. The sign-in stays in that account’s `~/.codex` and every
+later session uses it. The gateway relays each request to ChatGPT with that sign-in, records its usage for the
+session and its device, and applies the plan’s and the device’s limits. (Device code sign-in may have to be allowed
+in ChatGPT’s security settings first.)
+
+When starting a session, pick the **device** its usage counts for. The panel remembers the choice per browser, so a
+phone and a laptop each keep their own.
 
 ## Turn it on for a plan
 

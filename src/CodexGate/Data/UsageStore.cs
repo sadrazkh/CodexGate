@@ -6,7 +6,7 @@ public sealed class UsageStore(Database db)
 {
     private const string Columns = """
         id, user_id, key_id, at, model, upstream, endpoint, status, input_tokens, cached_tokens, output_tokens,
-        reasoning_tokens, billable_tokens, cost_usd, estimated, tool_calls, duration_ms
+        reasoning_tokens, billable_tokens, cost_usd, estimated, tool_calls, duration_ms, device_id
         """;
 
     public async Task InsertAsync(UsageRow u)
@@ -14,9 +14,9 @@ public sealed class UsageStore(Database db)
         await using var c = await db.OpenAsync();
         await c.ExecuteAsync("""
             INSERT INTO usage (user_id, key_id, at, model, upstream, endpoint, status, input_tokens, cached_tokens,
-                output_tokens, reasoning_tokens, billable_tokens, cost_usd, estimated, tool_calls, duration_ms)
+                output_tokens, reasoning_tokens, billable_tokens, cost_usd, estimated, tool_calls, duration_ms, device_id)
             VALUES (@UserId, @KeyId, @At, @Model, @Upstream, @Endpoint, @Status, @InputTokens, @CachedTokens,
-                @OutputTokens, @ReasoningTokens, @BillableTokens, @CostUsd, @Estimated, @ToolCalls, @DurationMs)
+                @OutputTokens, @ReasoningTokens, @BillableTokens, @CostUsd, @Estimated, @ToolCalls, @DurationMs, @DeviceId)
             """, u);
     }
 
@@ -40,6 +40,40 @@ public sealed class UsageStore(Database db)
             FROM usage WHERE user_id = @userId AND at >= @since AND status BETWEEN 200 AND 299
             """, new { userId, since });
         return row.Count == 0 ? null : (row.Tokens / row.Count, row.Usd / row.Count);
+    }
+
+    /// <summary>The same sum for one device.</summary>
+    public async Task<(double Used, long? Oldest)> SumSinceForDeviceAsync(long deviceId, long since, string kind)
+    {
+        await using var c = await db.OpenAsync();
+        var column = kind == LimitKinds.Usd ? "COALESCE(cost_usd, 0)" : "billable_tokens";
+        return await c.QuerySingleAsync<(double Used, long? Oldest)>(
+            $"SELECT COALESCE(SUM({column}), 0) AS used, MIN(at) AS oldest FROM usage WHERE device_id = @deviceId AND at >= @since",
+            new { deviceId, since });
+    }
+
+    /// <summary>One user's usage since a time, per device (null = no device).</summary>
+    public async Task<List<DeviceUsage>> ByDeviceAsync(long userId, long since)
+    {
+        await using var c = await db.OpenAsync();
+        return (await c.QueryAsync<DeviceUsage>("""
+            SELECT device_id, COUNT(*) AS requests, COALESCE(SUM(billable_tokens), 0) AS tokens,
+                   COALESCE(SUM(cost_usd), 0) AS cost_usd, MAX(at) AS last_at
+            FROM usage WHERE user_id = @userId AND at >= @since GROUP BY device_id ORDER BY tokens DESC
+            """, new { userId, since })).ToList();
+    }
+
+    /// <summary>Tokens counted per key, for the given keys (each server session has its own).</summary>
+    public async Task<Dictionary<long, double>> TokensByKeyAsync(IReadOnlyCollection<long> keyIds)
+    {
+        if (keyIds.Count == 0)
+        {
+            return [];
+        }
+        await using var c = await db.OpenAsync();
+        return (await c.QueryAsync<(long KeyId, double Tokens)>(
+            "SELECT key_id, COALESCE(SUM(billable_tokens), 0) FROM usage WHERE key_id IN @keyIds GROUP BY key_id", new { keyIds }))
+            .ToDictionary(r => r.KeyId, r => r.Tokens);
     }
 
     public async Task<List<UsageRow>> RecentAsync(long? userId, int limit)
@@ -113,6 +147,15 @@ public sealed class DailyUsage
     public long Requests { get; set; }
     public double Tokens { get; set; }
     public double CostUsd { get; set; }
+}
+
+public sealed class DeviceUsage
+{
+    public long? DeviceId { get; set; }
+    public long Requests { get; set; }
+    public double Tokens { get; set; }
+    public double CostUsd { get; set; }
+    public long? LastAt { get; set; }
 }
 
 public sealed class UsageTotals

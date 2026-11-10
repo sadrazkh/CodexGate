@@ -258,6 +258,10 @@
 
   // ---------- Codex setup text ----------
   function codexConfig(g) {
+    // With the user's own ChatGPT login, Codex sends that sign-in and the gateway key rides in a header.
+    const auth = g.ownLogin
+      ? ['requires_openai_auth = true', 'env_http_headers = { "' + g.keyHeader + '" = "' + g.envKey + '" }']
+      : ['env_key = "' + g.envKey + '"'];
     return [
       'model = "' + (g.defaultModel || 'MODEL_NAME') + '"',
       'model_provider = "' + g.providerId + '"',
@@ -265,7 +269,7 @@
       '[model_providers.' + g.providerId + ']',
       'name = "CodexGate"',
       'base_url = "' + g.baseUrl + '"',
-      'env_key = "' + g.envKey + '"',
+      ...auth,
       'wire_api = "responses"',
       'supports_websockets = false',
       'stream_idle_timeout_ms = 600000',
@@ -464,9 +468,10 @@
   // ---------- my page ----------
   async function pageMe(main, alive) {
     await refreshMe();
-    const [keys, usage] = await Promise.all([
+    const [keys, usage, devices] = await Promise.all([
       api('GET', '/api/me/keys'),
       api('GET', '/api/me/usage?days=30&tz=' + tzMinutes()),
+      api('GET', '/api/me/devices'),
     ]);
     if (!alive()) return;
     const me = state.me;
@@ -499,40 +504,156 @@
     mount(main, 
       h('div', { class: 'page-head' }, h('h1', null, t('hello', { name: me.displayName || me.username }))),
       ...notices,
-      h('div', { class: 'grid two' }, status, connectCard(me.gateway, keys)),
+      h('div', { class: 'grid two' }, status, connectCard(me.gateway, keys, devices)),
       h('h2', null, t('usage')),
       h('div', { class: 'grid three' }, quotaCards),
+      devicesCard(devices, usage.byDevice),
       usageCard(t('last30'), usage.daily),
       recentCard(usage.recent, false),
       passwordCard());
   }
 
-  function connectCard(g, keys) {
+  const deviceName = (devices, id) => {
+    const d = id === null || id === undefined ? null : devices.find((x) => x.id === id);
+    return d ? d.name : t('noDevice');
+  };
+  const deviceSelect = (devices, value) =>
+    select([['', t('noDevice')]].concat(devices.map((d) => [d.id, d.name])), value === null || value === undefined ? '' : value);
+  const deviceOf = (sel) => (sel.value ? Number(sel.value) : null);
+
+  function connectCard(g, keys, devices) {
     const active = keys.filter((k) => !k.revokedAt);
     const list = active.length
-      ? table([t('colKey'), t('colName'), t('colLastUsed'), ''], active.map((k) => h('tr', null,
+      ? table([t('colKey'), t('colName'), t('colDevice'), t('colLastUsed'), ''], active.map((k) => h('tr', null,
         h('td', null, ltr(k.prefix + '…')),
         h('td', null, k.name || t('none')),
+        h('td', { class: 'small' }, deviceName(devices, k.deviceId)),
         h('td', { class: 'small' }, ago(k.lastUsedAt)),
         h('td', null, h('button', { class: 'small danger', type: 'button', onclick: (e) => revokeKey(e.currentTarget, k) }, t('revoke'))))), '')
       : h('p', { class: 'muted' }, t('noKeys'));
 
     return h('div', { class: 'card' },
       h('div', { class: 'card-head' }, h('h2', null, t('connectCodex')),
-        h('button', { class: 'primary small', type: 'button', onclick: () => newKeyDialog(g) }, t('newKey'))),
+        h('button', { class: 'primary small', type: 'button', onclick: () => newKeyDialog(g, devices) }, t('newKey'))),
+      g.ownLogin ? h('p', null, h('span', { class: 'badge brand' }, t('ownLoginBadge'))) : null,
       h('ol', { class: 'steps' },
         h('li', null, t('step1')),
         h('li', null, t('step2')),
+        g.ownLogin ? h('li', null, t('stepOwnLogin'), h('code', { class: 'inline' }, 'codex login'), t('stepOwnLoginAfter')) : null,
         h('li', null, t('step3a'), h('code', { class: 'inline' }, 'codex'), t('step3b'))),
       h('p', { class: 'small muted' }, t('gatewayAddress'), ltr(g.baseUrl)),
       list);
   }
 
-  function newKeyDialog(g) {
+  // Rolling limits, edited in place in the given array (plans and devices share this).
+  function limitsEditor(limits) {
+    const WINDOWS = [[5, t('w5h')], [24, t('w1d')], [168, t('w7d')], [720, t('w30d')], ['custom', t('wCustom')]];
+    const box = h('div');
+    function draw() {
+      mount(box, limits.length ? limits.map((l, i) => {
+        const known = WINDOWS.some(([w]) => w === l.windowHours);
+        const win = select(WINDOWS, known ? l.windowHours : 'custom', { 'aria-label': t('window') });
+        const hours = input({ type: 'number', min: '1', max: '8784', value: String(l.windowHours), dir: 'ltr', 'aria-label': t('wCustom') });
+        hours.classList.toggle('hidden', known);
+        win.addEventListener('change', () => {
+          if (win.value === 'custom') {
+            hours.classList.remove('hidden');
+          } else {
+            l.windowHours = Number(win.value);
+            hours.value = win.value;
+            hours.classList.add('hidden');
+          }
+        });
+        hours.addEventListener('input', () => { l.windowHours = Number(hours.value); });
+        const kind = select([['tokens', t('unitTokens')], ['usd', t('unitUsd')]], l.kind);
+        kind.addEventListener('change', () => { l.kind = kind.value; });
+        const amount = input({ type: 'number', min: '0', step: 'any', value: String(l.amount), dir: 'ltr' });
+        amount.addEventListener('input', () => { l.amount = Number(amount.value); });
+        return h('div', { class: 'row' },
+          field(t('window'), h('div', { class: 'stack-tight' }, win, hours)),
+          field(t('unit'), kind),
+          field(t('cap'), amount),
+          h('div', { class: 'fixed field' }, h('button', { class: 'ghost', type: 'button', 'aria-label': t('removeLimit'), onclick: () => { limits.splice(i, 1); draw(); } }, '✕')));
+      }) : h('p', { class: 'muted small' }, t('noLimitsYet')));
+    }
+    draw();
+    const add = h('button', { type: 'button', onclick: () => { limits.push({ windowHours: 5, kind: 'tokens', amount: 1000000 }); draw(); } }, t('addLimit'));
+    return { box, add, draw };
+  }
+  const limitsBody = (limits) => limits.map((l) => ({ windowHours: Number(l.windowHours), kind: l.kind, amount: Number(l.amount) }));
+
+  function devicesCard(devices, byDevice) {
+    const loose = byDevice.find((u) => u.deviceId === null || u.deviceId === undefined);
+    const rows = devices.map((d) => h('tr', null,
+      h('td', null, h('strong', null, d.name)),
+      h('td', null, d.quota.length
+        ? h('div', { class: 'stack-tight' }, d.quota.map((q) => h('div', { class: 'small' },
+          t('perWindow', { w: windowLabel(q.windowHours), amount: fmtAmount(q.kind, q.amount) }), ' · ', fmtPct(q.percent),
+          meter(q.percent, true))))
+        : h('span', { class: 'muted small' }, t('noLimit'))),
+      h('td', { class: 'num' }, fmtTokens(d.tokens30)),
+      h('td', { class: 'num' }, fmtInt(d.requests30)),
+      h('td', { class: 'num' }, fmtInt(d.activeKeys)),
+      h('td', { class: 'small' }, ago(d.lastAt)),
+      h('td', null, h('div', { class: 'actions' },
+        h('button', { class: 'small', type: 'button', onclick: () => deviceDialog(d) }, t('edit')),
+        h('button', {
+          class: 'small danger', type: 'button',
+          onclick: (e) => {
+            if (!confirm(t('deleteDeviceConfirm', { name: d.name }))) return;
+            guarded(e.currentTarget, async () => {
+              await api('DELETE', '/api/me/devices/' + d.id);
+              toast(t('deviceDeleted'));
+              render();
+            });
+          },
+        }, t('delete'))))));
+    if (loose) {
+      rows.push(h('tr', null, h('td', { class: 'muted' }, t('noDevice')), h('td', null, ''),
+        h('td', { class: 'num' }, fmtTokens(loose.tokens)), h('td', { class: 'num' }, fmtInt(loose.requests)),
+        h('td', null, ''), h('td', { class: 'small' }, ago(loose.lastAt)), h('td', null, '')));
+    }
+    return h('div', { class: 'card' },
+      h('div', { class: 'card-head' }, h('h2', null, t('devices')),
+        h('button', { class: 'primary small', type: 'button', onclick: () => deviceDialog(null) }, t('newDevice'))),
+      h('p', { class: 'small muted' }, t('devicesHelp')),
+      table([t('colName'), t('limits'), t('colTokens'), t('colRequests'), t('colKeys'), t('colLast'), ''], rows, t('noDevices')),
+      h('p', { class: 'small muted' }, t('thirtyDays')));
+  }
+
+  function deviceDialog(device) {
+    const name = input({ value: device ? device.name : '', maxlength: '40', placeholder: t('deviceNamePlaceholder') });
+    const limits = device ? device.limits.map((l) => Object.assign({}, l)) : [];
+    const editor = limitsEditor(limits);
+    const save = h('button', { class: 'primary', type: 'submit' }, t('save'));
+    const form = h('form', {
+      onsubmit: (e) => {
+        e.preventDefault();
+        guarded(save, async () => {
+          const body = { name: name.value, limits: limitsBody(limits) };
+          if (device) await api('PUT', '/api/me/devices/' + device.id, body);
+          else await api('POST', '/api/me/devices', body);
+          toast(t('deviceSaved'));
+          closeModal();
+          render();
+        });
+      },
+    },
+    field(t('deviceName'), name),
+    h('h3', null, t('limits')),
+    h('p', { class: 'small muted' }, t('deviceLimitsHelp')),
+    editor.box,
+    h('div', { class: 'actions' }, editor.add),
+    h('div', { class: 'actions end' }, save));
+    openModal(device ? t('editDevice') : t('newDevice'), form, true);
+  }
+
+  function newKeyDialog(g, devices) {
     const name = input({ placeholder: t('keyNamePlaceholder'), maxlength: '40' });
+    const device = deviceSelect(devices || [], null);
     const create = h('button', { class: 'primary', type: 'button' }, t('createKey'));
     create.addEventListener('click', () => guarded(create, async () => {
-      const res = await api('POST', '/api/me/keys', { name: name.value });
+      const res = await api('POST', '/api/me/keys', { name: name.value, deviceId: deviceOf(device) });
       openModal(t('keyCreated'), h('div', null,
         h('div', { class: 'notice warn' }, t('keyShownOnce')),
         h('div', { class: 'secret', dir: 'ltr' }, res.key),
@@ -543,6 +664,7 @@
     }));
     openModal(t('newKey'), h('div', null,
       field(t('keyName'), name, t('keyNameHelp')),
+      devices && devices.length ? field(t('keyDevice'), device, t('keyDeviceHelp')) : null,
       h('div', { class: 'actions end' }, create)));
   }
 
@@ -576,13 +698,13 @@
   }
 
   function recentCard(rows, withUser) {
-    const headers = [t('colTime')].concat(withUser ? [t('colUser')] : [],
+    const headers = [t('colTime')].concat(withUser ? [t('colUser')] : [t('colDevice')],
       [t('colModel'), t('colInput'), t('colCached'), t('colOutput'), t('colCounted'), t('colCost'), t('colStatus')]);
     return h('div', { class: 'card' },
       h('div', { class: 'card-head' }, h('h2', null, t('recentRequests'))),
       table(headers, rows.map((r) => h('tr', null,
         h('td', { class: 'small nowrap', title: fmtDate(r.at) }, ago(r.at)),
-        withUser ? h('td', null, r.username || t('none')) : null,
+        withUser ? h('td', null, r.username || t('none')) : h('td', { class: 'small' }, r.device || t('noDevice')),
         h('td', null, ltr(r.model, 'small')),
         h('td', { class: 'num' }, fmtTokens(r.inputTokens)),
         h('td', { class: 'num' }, fmtTokens(r.cachedTokens)),
@@ -792,6 +914,7 @@
     if (!alive()) return;
     const cards = plans.map((p) => h('div', { class: 'card' },
       h('div', { class: 'card-head' }, h('h2', null, p.name), h('div', { class: 'actions' },
+        p.ownLogin ? h('span', { class: 'badge brand' }, t('ownLoginBadge')) : null,
         p.remoteEnabled ? h('span', { class: 'badge brand' }, t('serverBadge')) : null,
         h('span', { class: 'badge' }, tn('usersCount', p.users, fmtInt(p.users))))),
       p.limits.length
@@ -820,51 +943,22 @@
   }
 
   function planDialog(plan) {
-    const WINDOWS = [[5, t('w5h')], [24, t('w1d')], [168, t('w7d')], [720, t('w30d')], ['custom', t('wCustom')]];
     const name = input({ value: plan ? plan.name : '', maxlength: '64' });
     const concurrency = input({ type: 'number', min: '1', max: '64', value: String(plan ? plan.maxConcurrency : 2), dir: 'ltr' });
     const models = input({ dir: 'ltr', value: plan ? plan.allowedModels.join(', ') : '', placeholder: 'gpt-5.5, gpt-5*' });
-    const limitsBox = h('div');
     const limits = plan ? plan.limits.map((l) => Object.assign({}, l)) : [];
+    const editor = limitsEditor(limits);
+    const ownLogin = h('input', { type: 'checkbox', checked: plan ? plan.ownLogin : false });
     const remoteOn = h('input', { type: 'checkbox', checked: plan ? plan.remoteEnabled : false });
     const remoteSessions = input({ type: 'number', min: '1', max: '20', value: String(plan ? plan.remoteMaxSessions : 2), dir: 'ltr' });
     const remoteMemory = input({ type: 'number', min: '0', max: '262144', value: String(plan ? plan.remoteMemoryMb : 0), dir: 'ltr' });
 
-    function drawLimits() {
-      mount(limitsBox, limits.length ? limits.map((l, i) => {
-        const known = WINDOWS.some(([w]) => w === l.windowHours);
-        const win = select(WINDOWS, known ? l.windowHours : 'custom', { 'aria-label': t('window') });
-        const hours = input({ type: 'number', min: '1', max: '8784', value: String(l.windowHours), dir: 'ltr', 'aria-label': t('wCustom') });
-        hours.classList.toggle('hidden', known);
-        win.addEventListener('change', () => {
-          if (win.value === 'custom') {
-            hours.classList.remove('hidden');
-          } else {
-            l.windowHours = Number(win.value);
-            hours.value = win.value;
-            hours.classList.add('hidden');
-          }
-        });
-        hours.addEventListener('input', () => { l.windowHours = Number(hours.value); });
-        const kind = select([['tokens', t('unitTokens')], ['usd', t('unitUsd')]], l.kind);
-        kind.addEventListener('change', () => { l.kind = kind.value; });
-        const amount = input({ type: 'number', min: '0', step: 'any', value: String(l.amount), dir: 'ltr' });
-        amount.addEventListener('input', () => { l.amount = Number(amount.value); });
-        return h('div', { class: 'row' },
-          field(t('window'), h('div', { class: 'stack-tight' }, win, hours)),
-          field(t('unit'), kind),
-          field(t('cap'), amount),
-          h('div', { class: 'fixed field' }, h('button', { class: 'ghost', type: 'button', 'aria-label': t('removeLimit'), onclick: () => { limits.splice(i, 1); drawLimits(); } }, '✕')));
-      }) : h('p', { class: 'muted small' }, t('noLimitsYet')));
-    }
-    drawLimits();
-
-    const addLimit = h('button', { type: 'button', onclick: () => { limits.push({ windowHours: 5, kind: 'tokens', amount: 1000000 }); drawLimits(); } }, t('addLimit'));
+    const addLimit = editor.add;
     const template = h('button', {
       type: 'button',
       onclick: () => {
         limits.splice(0, limits.length, { windowHours: 5, kind: 'tokens', amount: 2000000 }, { windowHours: 168, kind: 'tokens', amount: 20000000 });
-        drawLimits();
+        editor.draw();
       },
     }, t('codexTemplate'));
 
@@ -877,7 +971,8 @@
             name: name.value,
             maxConcurrency: Number(concurrency.value),
             allowedModels: models.value,
-            limits: limits.map((l) => ({ windowHours: Number(l.windowHours), kind: l.kind, amount: Number(l.amount) })),
+            limits: limitsBody(limits),
+            ownLogin: ownLogin.checked,
             remoteEnabled: remoteOn.checked,
             remoteMaxSessions: Number(remoteSessions.value),
             remoteMemoryMb: Number(remoteMemory.value),
@@ -892,9 +987,11 @@
     },
     h('div', { class: 'row' }, field(t('planName'), name), field(t('concurrency'), concurrency, t('concurrencyHelp'))),
     field(t('allowedModels'), models, t('allowedModelsHelp')),
+    h('label', { class: 'check' }, ownLogin, t('planOwnLogin')),
+    h('p', { class: 'small muted' }, t('planOwnLoginHelp')),
     h('h3', null, t('limits')),
     h('p', { class: 'small muted' }, t('limitsHelp')),
-    limitsBox,
+    editor.box,
     h('div', { class: 'actions' }, addLimit, template),
     h('h3', null, t('serverSessions')),
     h('label', { class: 'check' }, remoteOn, t('planRemoteEnable')),
@@ -1018,8 +1115,9 @@
   // ---------- server sessions ----------
   async function pageServer(main, alive) {
     let data;
+    let devices = [];
     try {
-      data = await api('GET', '/api/remote/');
+      [data, devices] = await Promise.all([api('GET', '/api/remote/'), api('GET', '/api/me/devices')]);
     } catch (err) {
       if (alive()) mount(main, h('div', { class: 'page-head' }, h('h1', null, t('serverTitle'))), h('div', { class: 'notice bad' }, errorText(err)));
       return;
@@ -1032,25 +1130,35 @@
     const running = data.sessions.filter((s) => s.running).length;
     const name = input({ value: t('sessionDefaultName', { n: fmtInt(data.sessions.length + 1) }), maxlength: '40' });
     const dir = input({ value: 'project', dir: 'ltr', maxlength: '64' });
-    const program = select([['codex', t('programCodex')], ['shell', t('programShell')]], 'codex');
+    const program = select([['codex', t('programCodex')], ['shell', t('programShell')]], data.ownLogin && !data.sessions.length ? 'shell' : 'codex');
+    // Remembered per browser, so the phone and the laptop each keep picking themselves.
+    let remembered = null;
+    try { remembered = localStorage.getItem('codexgate.device'); } catch (e) { remembered = null; }
+    const device = deviceSelect(devices, devices.some((d) => String(d.id) === remembered) ? remembered : null);
     const start = h('button', { class: 'primary', type: 'submit', disabled: running >= data.maxSessions }, t('startSession'));
     const form = h('form', {
       onsubmit: (e) => {
         e.preventDefault();
         guarded(start, async () => {
           const size = terminalSizeGuess();
-          const s = await api('POST', '/api/remote/sessions', { name: name.value, dir: dir.value, program: program.value, cols: size.cols, rows: size.rows });
+          try { localStorage.setItem('codexgate.device', device.value); } catch (err) { /* not kept */ }
+          const s = await api('POST', '/api/remote/sessions', {
+            name: name.value, dir: dir.value, program: program.value, cols: size.cols, rows: size.rows, deviceId: deviceOf(device),
+          });
           location.hash = '#/terminal/' + s.id;
         });
       },
     },
     h('div', { class: 'row' }, field(t('sessionName'), name), field(t('sessionFolder'), dir, t('sessionFolderHelp')), field(t('program'), program),
+      devices.length ? field(t('sessionDevice'), device, t('sessionDeviceHelp')) : null,
       h('div', { class: 'fixed field' }, start)));
 
     const rows = data.sessions.map((s) => h('tr', null,
       h('td', null, h('strong', null, s.name)),
       h('td', null, ltr('~/work/' + s.dir, 'small')),
       h('td', null, s.program === 'codex' ? 'Codex' : t('programShell')),
+      h('td', { class: 'small' }, deviceName(devices, s.deviceId)),
+      h('td', { class: 'num' }, fmtTokens(s.tokens)),
       h('td', { class: 'small' }, ago(s.createdAt)),
       h('td', null, s.running ? h('span', { class: 'badge ok' }, t('running')) : h('span', { class: 'badge' }, t('ended'))),
       h('td', null, h('div', { class: 'actions' },
@@ -1071,9 +1179,11 @@
       h('div', { class: 'page-head' }, h('h1', null, t('serverTitle')),
         h('span', { class: 'muted small' }, t('sessionsUsed', { n: fmtInt(running), max: fmtInt(data.maxSessions) }))),
       h('p', { class: 'muted' }, t('serverIntro')),
+      data.ownLogin ? h('div', { class: 'notice' }, h('p', null, t('ownLoginNotice')), codeBox('codex login --device-auth'),
+        h('p', { class: 'small' }, t('ownLoginNoticeAfter'))) : null,
       data.memoryMb > 0 ? h('p', { class: 'small muted' }, t('memoryCap', { n: fmtInt(data.memoryMb) })) : null,
       h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('h2', null, t('newSession'))), form),
-      h('div', { class: 'card' }, table([t('sessionName'), t('sessionFolder'), t('program'), t('colCreated'), t('colStatus'), ''], rows, t('sessionsEmpty'))));
+      h('div', { class: 'card' }, table([t('sessionName'), t('sessionFolder'), t('program'), t('sessionDevice'), t('colTokens'), t('colCreated'), t('colStatus'), ''], rows, t('sessionsEmpty'))));
   }
 
   function terminalSizeGuess() {

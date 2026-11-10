@@ -47,6 +47,15 @@ public sealed class GateOptions
 
     /// <summary>Installed by install.sh: the app owns its ports, runs the setup page, and gets its own certificate.</summary>
     public ManagedOptions Managed { get; set; } = new();
+
+    /// <summary>Where plans with "own ChatGPT login" send Codex's requests, with the user's own sign-in.</summary>
+    public ChatGptOptions ChatGpt { get; set; } = new();
+}
+
+public sealed class ChatGptOptions
+{
+    /// <summary>The Codex backend of ChatGPT, as Codex itself uses it when signed in with ChatGPT.</summary>
+    public string BaseUrl { get; set; } = "https://chatgpt.com/backend-api/codex";
 }
 
 public sealed class ManagedOptions

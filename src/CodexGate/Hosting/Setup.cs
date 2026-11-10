@@ -233,9 +233,12 @@ public static class SetupApi
 {
     public const string TokenHeader = "X-Setup-Token";
 
+    /// <summary>The page polls progress every 1.5 s; that must not use up the sign-in limit the other calls share.</summary>
+    public const string ProgressRateLimit = "setup-progress";
+
     public static void MapSetupApi(this IEndpointRouteBuilder app)
     {
-        var setup = app.MapGroup("/api/setup").RequireRateLimiting("login");
+        var setup = app.MapGroup("/api/setup");
         setup.MapGet("/state", async (HttpContext ctx, SetupService service, IOptions<GateOptions> options) =>
         {
             if (!await OpenAsync(ctx, service))
@@ -244,7 +247,7 @@ public static class SetupApi
             }
             var m = options.Value.Managed;
             return Results.Ok(new { httpsPort = m.PublicHttpsPort, httpAvailable = m.HttpChallengeAvailable, publicIp = m.PublicIp });
-        });
+        }).RequireRateLimiting("login");
         setup.MapPost("/domain", async (DomainInput input, HttpContext ctx, SetupService service, IOptions<GateOptions> options) =>
         {
             if (!await OpenAsync(ctx, service))
@@ -264,7 +267,7 @@ public static class SetupApi
             }
             var ip = options.Value.Managed.PublicIp;
             return Results.Ok(new { addresses, pointsHere = ip.Length > 0 && addresses.Contains(ip) });
-        });
+        }).RequireRateLimiting("login");
         setup.MapPost("/complete", async (SetupInput input, HttpContext ctx, SetupService service) =>
         {
             if (!await OpenAsync(ctx, service))
@@ -273,12 +276,12 @@ public static class SetupApi
             }
             var error = service.Start(input);
             return error is null ? Results.Accepted() : Errors.Json(error == "busy" ? 409 : 400, error);
-        });
+        }).RequireRateLimiting("login");
         setup.MapGet("/progress", (HttpContext ctx, SetupService service) =>
         {
             var snapshot = service.Snapshot();
             return snapshot is null || !service.TokenMatches(ctx.Request.Headers[TokenHeader]) ? Errors.NotFound() : Results.Ok(snapshot);
-        });
+        }).RequireRateLimiting(ProgressRateLimit);
     }
 
     private static async Task<bool> OpenAsync(HttpContext ctx, SetupService service) =>

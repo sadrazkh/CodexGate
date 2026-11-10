@@ -91,6 +91,9 @@ public static class UsageMath
 
 public sealed record WindowStatus(int WindowHours, string Kind, double Amount, double Used, long? FreesAt)
 {
+    /// <summary>Set when this window is a device's own limit rather than the plan's.</summary>
+    public string? Device { get; init; }
+
     public bool Exhausted => Used >= Amount;
     public double Percent => Amount <= 0 ? 100 : Math.Min(100, Used / Amount * 100);
 }
@@ -121,6 +124,22 @@ public sealed class QuotaService(UsageStore usage)
             var (used, oldest) = await usage.SumSinceAsync(user.Id, since, limit.Kind);
             used += running * (limit.Kind == LimitKinds.Usd ? perRequest.Usd : perRequest.Tokens);
             result.Add(new WindowStatus(limit.WindowHours, limit.Kind, limit.Amount, used, oldest is null ? null : oldest + windowMs));
+        }
+        return result;
+    }
+
+    /// <summary>A device's own limits: what was used through its keys in each window.</summary>
+    public async Task<List<WindowStatus>> EvaluateDeviceAsync(DeviceRow device, long now)
+    {
+        var result = new List<WindowStatus>();
+        foreach (var limit in device.Limits.OrderBy(l => l.WindowHours))
+        {
+            var windowMs = limit.WindowHours * 3_600_000L;
+            var (used, oldest) = await usage.SumSinceForDeviceAsync(device.Id, now - windowMs, limit.Kind);
+            result.Add(new WindowStatus(limit.WindowHours, limit.Kind, limit.Amount, used, oldest is null ? null : oldest + windowMs)
+            {
+                Device = device.Name,
+            });
         }
         return result;
     }

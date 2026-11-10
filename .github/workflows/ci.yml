@@ -59,6 +59,7 @@ jobs:
             -e Gate__AdminPassword=ci-admin-pass-1 \
             -e Gate__Upstreams__0__BaseUrl=http://127.0.0.1:5191/v1 \
             -e Gate__Upstreams__0__ApiKey=sk-ci-upstream \
+            -e Gate__ChatGpt__BaseUrl=http://127.0.0.1:5191/backend-api/codex \
             codexgate-remote
           for i in $(seq 1 60); do curl -fsS http://127.0.0.1:8080/healthz && break; sleep 1; done
       - name: End to end through the web terminal

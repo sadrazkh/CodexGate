@@ -29,7 +29,14 @@ const server = http.createServer((req, res) => {
       res.end(JSON.stringify({ object: 'list', data: [{ id: 'gpt-5.5', object: 'model' }, { id: 'gpt-5.4-mini', object: 'model' }] }));
       return;
     }
-    if (req.method !== 'POST' || !req.url.startsWith('/v1/responses')) {
+    // Stands in for ChatGPT's Codex backend too (Gate:ChatGpt:BaseUrl=http://127.0.0.1:<port>/backend-api/codex).
+    const chatgpt = req.url.startsWith('/backend-api/codex/');
+    if (chatgpt && req.method === 'GET' && req.url.startsWith('/backend-api/codex/models')) {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ models: [] }));
+      return;
+    }
+    if (req.method !== 'POST' || !(req.url.startsWith('/v1/responses') || req.url.startsWith('/backend-api/codex/responses'))) {
       res.writeHead(404, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ error: { message: 'not found', type: 'invalid_request_error' } }));
       return;
@@ -39,7 +46,11 @@ const server = http.createServer((req, res) => {
     try { request = JSON.parse(body); } catch { /* answer anyway */ }
     const id = `resp_mock_${++counter}`;
     const model = request.model || 'gpt-5.5';
-    const text = 'Hello from the CodexGate mock upstream.';
+    // On the ChatGPT path the answer says which sign-in it got, so a test can see the user's own token arrived.
+    const account = req.headers['chatgpt-account-id'] || 'none';
+    const text = chatgpt
+      ? `Hello from the ChatGPT mock, account ${account}, token ${auth.slice(7, 19)}.`
+      : 'Hello from the CodexGate mock upstream.';
     const item = { id: `msg_${counter}`, type: 'message', status: 'completed', role: 'assistant', content: [{ type: 'output_text', text, annotations: [] }] };
     const usage = {
       input_tokens: 1200 + body.length % 500,

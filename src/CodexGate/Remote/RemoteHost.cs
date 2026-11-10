@@ -23,10 +23,14 @@ public interface ITerminalLink : IAsyncDisposable
 /// </summary>
 public interface IRemoteHost
 {
-    /// <summary>Creates the user's account if needed and writes its Codex config; with a key, also its key file.</summary>
-    Task ProvisionAsync(long userId, string gatewayUrl, string model, string? key, CancellationToken ct);
+    /// <summary>
+    /// Creates the user's account if needed and writes its Codex config: the gateway's API key mode, or
+    /// (ownLogin) the ChatGPT relay with the user's own sign-in, which the config never touches.
+    /// </summary>
+    Task ProvisionAsync(long userId, string gatewayUrl, string model, bool ownLogin, CancellationToken ct);
 
-    Task StartAsync(long userId, RemoteSessionRow session, int cols, int rows, int memoryMb, CancellationToken ct);
+    /// <summary>Starts the session with its own gateway key, readable only by the user's account.</summary>
+    Task StartAsync(long userId, RemoteSessionRow session, int cols, int rows, int memoryMb, string key, CancellationToken ct);
 
     Task<IReadOnlyList<RemoteLive>> ListAsync(long userId, CancellationToken ct);
 

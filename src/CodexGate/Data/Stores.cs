@@ -87,7 +87,7 @@ public sealed class PlanStore(Database db)
     {
         await using var c = await db.OpenAsync();
         var plans = (await c.QueryAsync<PlanRow>(
-            "SELECT id, name, max_concurrency, allowed_models, created_at, remote_enabled, remote_max_sessions, remote_memory_mb FROM plans ORDER BY name")).ToList();
+            "SELECT id, name, max_concurrency, allowed_models, created_at, remote_enabled, remote_max_sessions, remote_memory_mb, own_login FROM plans ORDER BY name")).ToList();
         var limits = (await c.QueryAsync<PlanLimitRow>(
             "SELECT id, plan_id, window_hours, kind, amount FROM plan_limits ORDER BY window_hours, id")).ToList();
         foreach (var p in plans)
@@ -101,7 +101,7 @@ public sealed class PlanStore(Database db)
     {
         await using var c = await db.OpenAsync();
         var plan = await c.QuerySingleOrDefaultAsync<PlanRow>(
-            "SELECT id, name, max_concurrency, allowed_models, created_at, remote_enabled, remote_max_sessions, remote_memory_mb FROM plans WHERE id = @id", new { id });
+            "SELECT id, name, max_concurrency, allowed_models, created_at, remote_enabled, remote_max_sessions, remote_memory_mb, own_login FROM plans WHERE id = @id", new { id });
         if (plan is not null)
         {
             plan.Limits = (await c.QueryAsync<PlanLimitRow>(
@@ -126,8 +126,8 @@ public sealed class PlanStore(Database db)
         if (plan.Id == 0)
         {
             id = await c.ExecuteScalarAsync<long>("""
-                INSERT INTO plans (name, max_concurrency, allowed_models, created_at, remote_enabled, remote_max_sessions, remote_memory_mb)
-                VALUES (@Name, @MaxConcurrency, @AllowedModels, @CreatedAt, @RemoteEnabled, @RemoteMaxSessions, @RemoteMemoryMb) RETURNING id
+                INSERT INTO plans (name, max_concurrency, allowed_models, created_at, remote_enabled, remote_max_sessions, remote_memory_mb, own_login)
+                VALUES (@Name, @MaxConcurrency, @AllowedModels, @CreatedAt, @RemoteEnabled, @RemoteMaxSessions, @RemoteMemoryMb, @OwnLogin) RETURNING id
                 """, plan, tx);
         }
         else
@@ -135,7 +135,7 @@ public sealed class PlanStore(Database db)
             id = plan.Id;
             await c.ExecuteAsync(
                 "UPDATE plans SET name = @Name, max_concurrency = @MaxConcurrency, allowed_models = @AllowedModels, " +
-                "remote_enabled = @RemoteEnabled, remote_max_sessions = @RemoteMaxSessions, remote_memory_mb = @RemoteMemoryMb WHERE id = @Id",
+                "remote_enabled = @RemoteEnabled, remote_max_sessions = @RemoteMaxSessions, remote_memory_mb = @RemoteMemoryMb, own_login = @OwnLogin WHERE id = @Id",
                 plan, tx);
             await c.ExecuteAsync("DELETE FROM plan_limits WHERE plan_id = @id", new { id }, tx);
         }
@@ -164,15 +164,22 @@ public sealed class PlanStore(Database db)
 
 public sealed class KeyStore(Database db)
 {
-    private const string Columns = "id, user_id, name, prefix, hash, created_at, last_used_at, revoked_at";
+    private const string Columns = "id, user_id, name, prefix, hash, created_at, last_used_at, revoked_at, device_id";
 
     public async Task<long> InsertAsync(ApiKeyRow k)
     {
         await using var c = await db.OpenAsync();
         return await c.ExecuteScalarAsync<long>("""
-            INSERT INTO api_keys (user_id, name, prefix, hash, created_at)
-            VALUES (@UserId, @Name, @Prefix, @Hash, @CreatedAt) RETURNING id
+            INSERT INTO api_keys (user_id, name, prefix, hash, created_at, device_id)
+            VALUES (@UserId, @Name, @Prefix, @Hash, @CreatedAt, @DeviceId) RETURNING id
             """, k);
+    }
+
+    public async Task RevokeForDeviceAsync(long deviceId, long now)
+    {
+        await using var c = await db.OpenAsync();
+        await c.ExecuteAsync(
+            "UPDATE api_keys SET revoked_at = @now WHERE device_id = @deviceId AND revoked_at IS NULL", new { deviceId, now });
     }
 
     public async Task<ApiKeyRow?> FindActiveByHashAsync(byte[] hash)
@@ -194,6 +201,23 @@ public sealed class KeyStore(Database db)
         await using var c = await db.OpenAsync();
         return await c.ExecuteScalarAsync<long>(
             "SELECT COUNT(*) FROM api_keys WHERE user_id = @userId AND revoked_at IS NULL", new { userId });
+    }
+
+    private const string NotASessionKey = "id NOT IN (SELECT key_id FROM remote_sessions WHERE key_id IS NOT NULL)";
+
+    /// <summary>The user's own keys, without those that belong to a server session.</summary>
+    public async Task<List<ApiKeyRow>> ListPersonalAsync(long userId)
+    {
+        await using var c = await db.OpenAsync();
+        return (await c.QueryAsync<ApiKeyRow>(
+            $"SELECT {Columns} FROM api_keys WHERE user_id = @userId AND {NotASessionKey} ORDER BY created_at DESC", new { userId })).ToList();
+    }
+
+    public async Task<long> CountPersonalActiveAsync(long userId)
+    {
+        await using var c = await db.OpenAsync();
+        return await c.ExecuteScalarAsync<long>(
+            $"SELECT COUNT(*) FROM api_keys WHERE user_id = @userId AND revoked_at IS NULL AND {NotASessionKey}", new { userId });
     }
 
     /// <summary>Revokes a key; when userId is given the key must belong to that user.</summary>
@@ -222,6 +246,87 @@ public sealed class KeyStore(Database db)
             UPDATE api_keys SET last_used_at = @now
             WHERE id = @id AND (last_used_at IS NULL OR last_used_at < @cutoff)
             """, new { id, now, cutoff = now - 60_000 });
+    }
+}
+
+/// <summary>A user's devices and their limits.</summary>
+public sealed class DeviceStore(Database db)
+{
+    public const int MaxPerUser = 20;
+
+    public async Task<List<DeviceRow>> ListAsync(long userId)
+    {
+        await using var c = await db.OpenAsync();
+        var devices = (await c.QueryAsync<DeviceRow>(
+            "SELECT id, user_id, name, created_at FROM devices WHERE user_id = @userId ORDER BY name", new { userId })).ToList();
+        var limits = (await c.QueryAsync<(long DeviceId, long Id, int WindowHours, string Kind, double Amount)>("""
+            SELECT l.device_id, l.id, l.window_hours, l.kind, l.amount FROM device_limits l
+            JOIN devices d ON d.id = l.device_id WHERE d.user_id = @userId ORDER BY l.window_hours, l.id
+            """, new { userId })).ToList();
+        foreach (var d in devices)
+        {
+            d.Limits = limits.Where(l => l.DeviceId == d.Id)
+                .Select(l => new PlanLimitRow { Id = l.Id, WindowHours = l.WindowHours, Kind = l.Kind, Amount = l.Amount }).ToList();
+        }
+        return devices;
+    }
+
+    public async Task<DeviceRow?> GetAsync(long id)
+    {
+        await using var c = await db.OpenAsync();
+        var device = await c.QuerySingleOrDefaultAsync<DeviceRow>(
+            "SELECT id, user_id, name, created_at FROM devices WHERE id = @id", new { id });
+        if (device is not null)
+        {
+            device.Limits = (await c.QueryAsync<PlanLimitRow>(
+                "SELECT id, window_hours, kind, amount FROM device_limits WHERE device_id = @id ORDER BY window_hours, id", new { id })).ToList();
+        }
+        return device;
+    }
+
+    /// <summary>Saves the device and replaces its limits; returns null when the name is already taken.</summary>
+    public async Task<long?> SaveAsync(DeviceRow device)
+    {
+        await using var c = await db.OpenAsync();
+        await using var tx = await c.BeginTransactionAsync();
+        var taken = await c.ExecuteScalarAsync<long>(
+            "SELECT COUNT(*) FROM devices WHERE user_id = @UserId AND name = @Name AND id <> @Id", device, tx);
+        if (taken > 0)
+        {
+            return null;
+        }
+        long id;
+        if (device.Id == 0)
+        {
+            id = await c.ExecuteScalarAsync<long>(
+                "INSERT INTO devices (user_id, name, created_at) VALUES (@UserId, @Name, @CreatedAt) RETURNING id", device, tx);
+        }
+        else
+        {
+            id = device.Id;
+            await c.ExecuteAsync("UPDATE devices SET name = @Name WHERE id = @Id", device, tx);
+            await c.ExecuteAsync("DELETE FROM device_limits WHERE device_id = @id", new { id }, tx);
+        }
+        foreach (var l in device.Limits)
+        {
+            await c.ExecuteAsync(
+                "INSERT INTO device_limits (device_id, window_hours, kind, amount) VALUES (@id, @WindowHours, @Kind, @Amount)",
+                new { id, l.WindowHours, l.Kind, l.Amount }, tx);
+        }
+        await tx.CommitAsync();
+        return id;
+    }
+
+    public async Task<long> CountAsync(long userId)
+    {
+        await using var c = await db.OpenAsync();
+        return await c.ExecuteScalarAsync<long>("SELECT COUNT(*) FROM devices WHERE user_id = @userId", new { userId });
+    }
+
+    public async Task DeleteAsync(long id)
+    {
+        await using var c = await db.OpenAsync();
+        await c.ExecuteAsync("DELETE FROM devices WHERE id = @id", new { id });
     }
 }
 

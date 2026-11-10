@@ -377,19 +377,10 @@ public static class AdminApi
         {
             return Errors.Json(400, "invalid_models");
         }
-        var limits = input.Limits ?? [];
-        if (limits.Count > MaxLimitsPerPlan)
+        var (limitError, limitRows) = CheckLimits(input.Limits);
+        if (limitError is not null)
         {
-            return Errors.Json(400, "too_many_limits");
-        }
-        if (limits.Any(l => l.WindowHours is < 1 or > 8784 || !LimitKinds.IsValid(l.Kind) || !double.IsFinite(l.Amount)
-                || l.Amount < 0 || l.Amount > 1e13))
-        {
-            return Errors.Json(400, "invalid_limit");
-        }
-        if (limits.GroupBy(l => (l.WindowHours, l.Kind)).Any(g => g.Count() > 1))
-        {
-            return Errors.Json(400, "duplicate_limit");
+            return Errors.Json(400, limitError);
         }
 
         var remoteSessions = input.RemoteMaxSessions ?? plan.RemoteMaxSessions;
@@ -401,12 +392,33 @@ public static class AdminApi
         plan.RemoteEnabled = input.RemoteEnabled ?? plan.RemoteEnabled;
         plan.RemoteMaxSessions = remoteSessions;
         plan.RemoteMemoryMb = remoteMemory;
+        plan.OwnLogin = input.OwnLogin ?? plan.OwnLogin;
         plan.Name = name;
         plan.MaxConcurrency = concurrency;
         plan.AllowedModels = ModelPatterns.Join(models);
-        plan.Limits = limits.Select(l => new PlanLimitRow { WindowHours = l.WindowHours, Kind = l.Kind!, Amount = l.Amount }).ToList();
+        plan.Limits = limitRows;
         var savedId = await plans.SaveAsync(plan);
         return Results.Ok(new { id = savedId });
+    }
+
+    /// <summary>Rolling limits as a plan or a device takes them; returns an error code or the rows.</summary>
+    public static (string? Error, List<PlanLimitRow> Rows) CheckLimits(List<LimitInput>? input)
+    {
+        var limits = input ?? [];
+        if (limits.Count > MaxLimitsPerPlan)
+        {
+            return ("too_many_limits", []);
+        }
+        if (limits.Any(l => l.WindowHours is < 1 or > 8784 || !LimitKinds.IsValid(l.Kind) || !double.IsFinite(l.Amount)
+                || l.Amount < 0 || l.Amount > 1e13))
+        {
+            return ("invalid_limit", []);
+        }
+        if (limits.GroupBy(l => (l.WindowHours, l.Kind)).Any(g => g.Count() > 1))
+        {
+            return ("duplicate_limit", []);
+        }
+        return (null, limits.Select(l => new PlanLimitRow { WindowHours = l.WindowHours, Kind = l.Kind!, Amount = l.Amount }).ToList());
     }
 
     private static async Task<IResult> SavePricesAsync(List<PriceInput> input, PriceStore prices)

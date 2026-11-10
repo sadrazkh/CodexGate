@@ -13,25 +13,27 @@ namespace CodexGate.Tests;
 public sealed class FakeRemoteHost : IRemoteHost
 {
     private readonly Lock _lock = new();
-    public List<(long UserId, string Url, string Model, string? Key)> Provisions { get; } = [];
+    public List<(long UserId, string Url, string Model, bool OwnLogin)> Provisions { get; } = [];
+    public List<(long UserId, string TmuxName, string Key)> Starts { get; } = [];
     public Dictionary<long, HashSet<string>> Live { get; } = [];
     public List<string> Killed { get; } = [];
     public FakeLink? LastLink { get; private set; }
     public bool Broken { get; set; }
 
-    public Task ProvisionAsync(long userId, string gatewayUrl, string model, string? key, CancellationToken ct)
+    public Task ProvisionAsync(long userId, string gatewayUrl, string model, bool ownLogin, CancellationToken ct)
     {
         lock (_lock)
         {
-            Provisions.Add((userId, gatewayUrl, model, key));
+            Provisions.Add((userId, gatewayUrl, model, ownLogin));
         }
         return Task.CompletedTask;
     }
 
-    public Task StartAsync(long userId, RemoteSessionRow session, int cols, int rows, int memoryMb, CancellationToken ct)
+    public Task StartAsync(long userId, RemoteSessionRow session, int cols, int rows, int memoryMb, string key, CancellationToken ct)
     {
         lock (_lock)
         {
+            Starts.Add((userId, session.TmuxName, key));
             if (!Live.TryGetValue(userId, out var set))
             {
                 Live[userId] = set = [];
@@ -181,7 +183,7 @@ public sealed class RemoteTests : IDisposable
     }
 
     [Fact]
-    public async Task Starting_a_session_prepares_the_account_once_with_its_own_key()
+    public async Task Each_session_gets_its_own_key_and_the_account_its_config()
     {
         var (_, user, userId, _) = await SetupAsync();
         Assert.True((await GateFactory.JsonAsync(await user.GetAsync("/api/me/"))).GetProperty("remoteAvailable").GetBoolean());
@@ -194,11 +196,14 @@ public sealed class RemoteTests : IDisposable
         Assert.Equal(userId, first.UserId);
         Assert.Equal("http://127.0.0.1:8080/v1", first.Url);
         Assert.Equal("gpt-5.5", first.Model);
-        Assert.StartsWith("cgk_", first.Key);
-        Assert.Null(_app.Remote.Provisions[1].Key); // the key is made once; later starts only refresh the config
+        Assert.False(first.OwnLogin);
+        Assert.Equal(2, _app.Remote.Starts.Count);
+        Assert.All(_app.Remote.Starts, st => Assert.StartsWith("cgk_", st.Key));
+        Assert.NotEqual(_app.Remote.Starts[0].Key, _app.Remote.Starts[1].Key);
 
+        // Session keys are the sessions' own: not in the user's key list, not counted against their ten.
         var keys = await GateFactory.JsonAsync(await user.GetAsync("/api/me/keys"));
-        Assert.Contains(keys.EnumerateArray(), k => k.GetProperty("name").GetString() == RemoteService.KeyName);
+        Assert.Equal(0, keys.GetArrayLength());
 
         var list = await GateFactory.JsonAsync(await user.GetAsync("/api/remote/"));
         Assert.Equal(2, list.GetProperty("sessions").GetArrayLength());
@@ -210,17 +215,20 @@ public sealed class RemoteTests : IDisposable
     }
 
     [Fact]
-    public async Task A_revoked_server_key_is_replaced_on_the_next_start()
+    public async Task A_sessions_usage_is_its_own_and_its_key_dies_with_it()
     {
         var (_, user, _, _) = await SetupAsync(maxSessions: 5);
-        await StartAsync(user);
-        var keys = await GateFactory.JsonAsync(await user.GetAsync("/api/me/keys"));
-        var serverKey = keys.EnumerateArray().First(k => k.GetProperty("name").GetString() == RemoteService.KeyName).GetProperty("id").GetInt64();
-        Assert.Equal(HttpStatusCode.NoContent, (await user.DeleteAsync($"/api/me/keys/{serverKey}")).StatusCode);
+        var id = (await GateFactory.JsonAsync(await StartAsync(user))).GetProperty("id").GetInt64();
+        var key = _app.Remote.Starts.Single().Key;
+        using var codex = _app.CreateClient();
+        codex.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", key);
+        Assert.Equal(HttpStatusCode.OK, (await codex.PostAsync("/v1/responses", GateFactory.ResponsesBody())).StatusCode);
 
-        await StartAsync(user, "next");
-        Assert.StartsWith("cgk_", _app.Remote.Provisions.Last().Key);
-        Assert.NotEqual(_app.Remote.Provisions[0].Key, _app.Remote.Provisions.Last().Key);
+        var session = (await GateFactory.JsonAsync(await user.GetAsync("/api/remote/"))).GetProperty("sessions")[0];
+        Assert.Equal(84, session.GetProperty("tokens").GetDouble()); // 60 fresh + 40 cached × 0.1 + 20 out
+
+        Assert.Equal(HttpStatusCode.NoContent, (await user.DeleteAsync($"/api/remote/sessions/{id}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await codex.PostAsync("/v1/responses", GateFactory.ResponsesBody())).StatusCode);
     }
 
     [Theory]

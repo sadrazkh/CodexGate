@@ -29,6 +29,7 @@ services.AddSingleton(sp =>
 services.AddSingleton<UserStore>();
 services.AddSingleton<PlanStore>();
 services.AddSingleton<KeyStore>();
+services.AddSingleton<DeviceStore>();
 services.AddSingleton<UsageStore>();
 services.AddSingleton<PriceStore>();
 services.AddSingleton<SettingsStore>();
@@ -122,6 +123,9 @@ services.AddRateLimiter(o =>
     o.AddPolicy("login", ctx => RateLimitPartition.GetFixedWindowLimiter(
         ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+    o.AddPolicy(SetupApi.ProgressRateLimit, ctx => RateLimitPartition.GetFixedWindowLimiter(
+        ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 240, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
     // Codex makes a few requests a minute (more in tool loops); this only stops floods from one address.
     o.AddPolicy(GatewayEndpoints.RateLimitPolicy, ctx => RateLimitPartition.GetFixedWindowLimiter(
         ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",

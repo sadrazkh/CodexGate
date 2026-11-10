@@ -6,8 +6,8 @@
 # nor the gateway's database, cookie keys or environment. Every argument is matched against a
 # strict pattern and nothing user-supplied ever reaches a shell.
 #
-#   provision <id> <gateway-url> <model>          (key, optional, on stdin)
-#   new       <id> <session> <cols> <rows> <dir> <program: codex|shell> <memory-mb>
+#   provision <id> <gateway-url> <model> <mode: api|chatgpt>
+#   new       <id> <session> <cols> <rows> <dir> <program: codex|shell> <memory-mb>   (session key on stdin)
 #   attach    <id> <session>                      (tmux control mode on stdin/stdout)
 #   list      <id>
 #   kill      <id> <session>
@@ -18,7 +18,7 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 readonly HOME_ROOT=/home
 readonly SOCKET=codexgate
-readonly VERSION=1
+readonly VERSION=2
 
 die() { echo "codexgate-host: $*" >&2; exit 2; }
 check() { [[ "$2" =~ $3 ]] || die "invalid $1"; }
@@ -48,26 +48,30 @@ case "$cmd" in
     ;;
 
   provision)
-    [[ $# -eq 3 ]] || die "usage: provision <id> <gateway-url> <model>"
+    [[ $# -eq 4 ]] || die "usage: provision <id> <gateway-url> <model> <api|chatgpt>"
     check id "$1" '^[0-9]{1,9}$'
     check url "$2" '^https?://[A-Za-z0-9.:/_-]{1,200}$'
     check model "$3" '^[A-Za-z0-9._:/@-]{1,128}$'
+    check mode "$4" '^(api|chatgpt)$'
     acct="cg-$1"
     if ! id -u "$acct" >/dev/null 2>&1; then
       useradd --create-home --home-dir "$HOME_ROOT/$acct" --shell /bin/bash --user-group \
         --comment "CodexGate user $1" "$acct"
     fi
     chmod 700 "$HOME_ROOT/$acct"
-    key=""
-    IFS= read -r key || true
-    [[ -z "$key" ]] || check key "$key" '^cgk_[A-Za-z0-9_-]{20,100}$'
     # Files are written by the account itself, never by root into a directory the account controls.
-    as_user "$acct" mkdir -p "$HOME_ROOT/$acct/.codex" "$HOME_ROOT/$acct/work"
-    printf 'model = "%s"\nmodel_provider = "codexgate"\n\n[model_providers.codexgate]\nname = "CodexGate"\nbase_url = "%s"\nenv_key = "CODEXGATE_API_KEY"\nwire_api = "responses"\nsupports_websockets = false\nstream_idle_timeout_ms = 600000\n' \
-      "$3" "$2" | as_user "$acct" sh -c 'umask 077; cat > "$HOME/.codex/config.toml"'
-    if [[ -n "$key" ]]; then
-      printf 'CODEXGATE_API_KEY=%s\n' "$key" | as_user "$acct" sh -c 'umask 077; cat > "$HOME/.codex/.env"'
+    as_user "$acct" mkdir -p "$HOME_ROOT/$acct/.codex/keys" "$HOME_ROOT/$acct/work"
+    if [[ "$4" == chatgpt ]]; then
+      # The user signs in with their own ChatGPT account (codex login); Codex sends that sign-in and
+      # the session's gateway key goes in a header. auth.json is never touched here.
+      auth='requires_openai_auth = true\nenv_http_headers = { "X-CodexGate-Key" = "CODEXGATE_API_KEY" }'
+    else
+      auth='env_key = "CODEXGATE_API_KEY"'
     fi
+    printf "model = \"%s\"\nmodel_provider = \"codexgate\"\n\n[model_providers.codexgate]\nname = \"CodexGate\"\nbase_url = \"%s\"\n$auth\nwire_api = \"responses\"\nsupports_websockets = false\nstream_idle_timeout_ms = 600000\n" \
+      "$3" "$2" | as_user "$acct" sh -c 'umask 077; cat > "$HOME/.codex/config.toml"'
+    # Before 0.4 one key for the whole account lived in .env; every session now has its own.
+    as_user "$acct" sh -c 'f="$HOME/.codex/.env"; [ -f "$f" ] && sed -i "/^CODEXGATE_API_KEY=/d" "$f"; true'
     ;;
 
   new)
@@ -79,13 +83,19 @@ case "$cmd" in
     check dir "$5" '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
     check program "$6" '^(codex|shell)$'
     check memory "$7" '^[0-9]{1,7}$'
+    key=""
+    IFS= read -r key || true
+    check key "$key" '^cgk_[A-Za-z0-9_-]{20,100}$'
     acct="cg-$1"
     need_account "$acct"
     workdir="$HOME_ROOT/$acct/work/$5"
-    as_user "$acct" mkdir -p "$workdir"
-    if [[ "$6" == codex ]]; then prog=(codex); else prog=(bash -l); fi
+    as_user "$acct" mkdir -p "$workdir" "$HOME_ROOT/$acct/.codex/keys"
+    # The key is in a file only this account can read, never on a command line other accounts can see.
+    printf '%s\n' "$key" | as_user "$acct" sh -c "umask 077; cat > \"\$HOME/.codex/keys/$2\""
+    if [[ "$6" == codex ]]; then run='exec codex'; else run='exec bash -l'; fi
+    launch="CODEXGATE_API_KEY=\$(cat \"\$HOME/.codex/keys/$2\"); export CODEXGATE_API_KEY; $run"
     user_env "$acct"
-    tmux_new=(tmux -L "$SOCKET" new-session -d -s "$2" -x "$3" -y "$4" -c "$workdir" "${prog[@]}")
+    tmux_new=(tmux -L "$SOCKET" new-session -d -s "$2" -x "$3" -y "$4" -c "$workdir" sh -c "$launch")
     if [[ "$7" != 0 ]] && command -v systemd-run >/dev/null 2>&1 && [[ -d /run/systemd/system ]]; then
       # The whole tmux server of this account lives in a scope with a memory cap.
       systemd-run --quiet --collect --scope --uid="$acct" --gid="$acct" --slice=codexgate.slice \
@@ -122,6 +132,7 @@ case "$cmd" in
     acct="cg-$1"
     id -u "$acct" >/dev/null 2>&1 || exit 0
     as_user "$acct" tmux -L "$SOCKET" kill-session -t "$2" 2>/dev/null || true
+    as_user "$acct" rm -f "$HOME_ROOT/$acct/.codex/keys/$2"
     ;;
 
   *)

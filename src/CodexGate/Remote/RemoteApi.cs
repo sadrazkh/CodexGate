@@ -7,9 +7,10 @@ using CodexGate.Security;
 
 namespace CodexGate.Remote;
 
-public sealed record NewSessionInput(string? Name, string? Dir, string? Program, int? Cols, int? Rows);
+public sealed record NewSessionInput(string? Name, string? Dir, string? Program, int? Cols, int? Rows, long? DeviceId = null);
 
-public sealed record SessionView(long Id, string Name, string Dir, string Program, long CreatedAt, bool Running, int Attached);
+public sealed record SessionView(
+    long Id, string Name, string Dir, string Program, long CreatedAt, bool Running, int Attached, long? DeviceId, double Tokens);
 
 /// <summary>Server sessions in the panel: list, start, stop, and the terminal socket.</summary>
 public static partial class RemoteApi
@@ -39,13 +40,18 @@ public static partial class RemoteApi
         app.Map("/api/remote/sessions/{id:long}/terminal", TerminalAsync);
     }
 
-    private static async Task<IResult> ListAsync(HttpContext ctx, RemoteService remote, RemoteStore store, CancellationToken ct)
+    private static async Task<IResult> ListAsync(
+        HttpContext ctx, RemoteService remote, RemoteStore store, UsageStore usage, CancellationToken ct)
     {
         var user = ctx.CurrentUser()!;
         var plan = await remote.AllowedPlanAsync(user);
         if (plan is null)
         {
-            return Results.Ok(new { available = false, featureEnabled = remote.Enabled, maxSessions = 0, memoryMb = 0, sessions = Array.Empty<SessionView>() });
+            return Results.Ok(new
+            {
+                available = false, featureEnabled = remote.Enabled, maxSessions = 0, memoryMb = 0, ownLogin = false,
+                sessions = Array.Empty<SessionView>(),
+            });
         }
         var rows = await store.ListAsync(user.Id);
         IReadOnlyList<RemoteLive> live;
@@ -58,19 +64,25 @@ public static partial class RemoteApi
             return Errors.Json(503, "remote_unavailable", ex.Message);
         }
         var byName = live.ToDictionary(l => l.Name);
+        var tokens = await usage.TokensByKeyAsync(rows.Where(r => r.KeyId is not null).Select(r => r.KeyId!.Value).ToList());
         return Results.Ok(new
         {
             available = true,
             featureEnabled = true,
             maxSessions = plan.RemoteMaxSessions,
             memoryMb = plan.RemoteMemoryMb,
-            sessions = rows.Select(r => new SessionView(r.Id, r.Name, r.Dir, r.Program, r.CreatedAt,
-                byName.ContainsKey(r.TmuxName), byName.TryGetValue(r.TmuxName, out var l) ? l.Attached : 0)),
+            ownLogin = plan.OwnLogin,
+            sessions = rows.Select(r => View(r, byName.ContainsKey(r.TmuxName), byName.TryGetValue(r.TmuxName, out var l) ? l.Attached : 0,
+                r.KeyId is { } k ? tokens.GetValueOrDefault(k) : 0)),
         });
     }
 
+    private static SessionView View(RemoteSessionRow r, bool running, int attached, double tokens) =>
+        new(r.Id, r.Name, r.Dir, r.Program, r.CreatedAt, running, attached, r.DeviceId, Math.Round(tokens, 2));
+
     private static async Task<IResult> StartAsync(
-        NewSessionInput input, HttpContext ctx, RemoteService remote, RemoteStore store, PanelViews views, CancellationToken ct)
+        NewSessionInput input, HttpContext ctx, RemoteService remote, RemoteStore store, DeviceStore devices, PanelViews views,
+        CancellationToken ct)
     {
         var user = ctx.CurrentUser()!;
         var plan = await remote.AllowedPlanAsync(user);
@@ -93,6 +105,10 @@ public static partial class RemoteApi
         {
             return Errors.Json(400, "invalid_program");
         }
+        if (input.DeviceId is { } deviceId && (await devices.GetAsync(deviceId))?.UserId != user.Id)
+        {
+            return Errors.Json(400, "unknown_device");
+        }
         var cols = Math.Clamp(input.Cols ?? 120, 20, 400);
         var rows = Math.Clamp(input.Rows ?? 36, 5, 200);
         try
@@ -103,19 +119,24 @@ public static partial class RemoteApi
             {
                 return Errors.Json(409, "too_many_sessions");
             }
-            await remote.PrepareAccountAsync(user, ct);
-            var row = new RemoteSessionRow { UserId = user.Id, Name = name, Dir = dir, Program = program, CreatedAt = views.Now() };
+            await remote.PrepareAccountAsync(user, plan, ct);
+            var (keyId, secret) = await remote.NewSessionKeyAsync(user, name, input.DeviceId);
+            var row = new RemoteSessionRow
+            {
+                UserId = user.Id, Name = name, Dir = dir, Program = program, CreatedAt = views.Now(), DeviceId = input.DeviceId, KeyId = keyId,
+            };
             row.Id = await store.InsertAsync(row);
             try
             {
-                await remote.Host.StartAsync(user.Id, row, cols, rows, plan.RemoteMemoryMb, ct);
+                await remote.Host.StartAsync(user.Id, row, cols, rows, plan.RemoteMemoryMb, secret, ct);
             }
             catch
             {
                 await store.DeleteAsync(row.Id);
+                await remote.RevokeSessionKeyAsync(row);
                 throw;
             }
-            return Results.Ok(new SessionView(row.Id, row.Name, row.Dir, row.Program, row.CreatedAt, true, 0));
+            return Results.Ok(View(row, true, 0, 0));
         }
         catch (RemoteHostException ex)
         {
@@ -143,6 +164,7 @@ public static partial class RemoteApi
             }
         }
         await store.DeleteAsync(id);
+        await remote.RevokeSessionKeyAsync(session);
         return Results.NoContent();
     }
 

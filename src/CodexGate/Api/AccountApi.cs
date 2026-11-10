@@ -23,20 +23,112 @@ public static class AccountApi
         me.MapGet("/", async (HttpContext ctx, PanelViews views) => Results.Ok(await views.MeAsync(ctx.CurrentUser()!, ctx.Request)));
         me.MapPost("/password", ChangePasswordAsync).RequireRateLimiting("login");
         me.MapGet("/keys", async (HttpContext ctx, KeyStore keys) =>
-            Results.Ok((await keys.ListForUserAsync(ctx.CurrentUser()!.Id)).Select(KeyView.From)));
+            Results.Ok((await keys.ListPersonalAsync(ctx.CurrentUser()!.Id)).Select(KeyView.From)));
         me.MapPost("/keys", CreateKeyAsync);
         me.MapDelete("/keys/{id:long}", async (long id, HttpContext ctx, KeyStore keys, PanelViews views) =>
             await keys.RevokeAsync(id, ctx.CurrentUser()!.Id, views.Now()) ? Results.NoContent() : Errors.NotFound());
-        me.MapGet("/usage", async (HttpContext ctx, UsageStore usage, PanelViews views, int? days, int? tz) =>
+        me.MapGet("/usage", async (HttpContext ctx, UsageStore usage, DeviceStore devices, PanelViews views, int? days, int? tz) =>
         {
             var user = ctx.CurrentUser()!;
             var (since, offset) = Range(views.Now(), days, tz);
+            var names = (await devices.ListAsync(user.Id)).ToDictionary(d => d.Id, d => d.Name);
             return Results.Ok(new
             {
                 daily = await usage.DailyAsync(user.Id, since, offset),
-                recent = (await usage.RecentAsync(user.Id, 50)).Select(u => UsageView.From(u)),
+                recent = (await usage.RecentAsync(user.Id, 50))
+                    .Select(u => UsageView.From(u, device: u.DeviceId is { } d ? names.GetValueOrDefault(d) : null)),
+                byDevice = (await usage.ByDeviceAsync(user.Id, since)).Select(g => new
+                {
+                    g.DeviceId,
+                    name = g.DeviceId is { } d ? names.GetValueOrDefault(d) : null,
+                    g.Requests,
+                    tokens = Math.Round(g.Tokens, 2),
+                    costUsd = Math.Round(g.CostUsd, 6),
+                    g.LastAt,
+                }),
             });
         });
+
+        me.MapGet("/devices", ListDevicesAsync);
+        me.MapPost("/devices", (DeviceInput input, HttpContext ctx, DeviceStore devices, PanelViews views) =>
+            SaveDeviceAsync(null, input, ctx, devices, views));
+        me.MapPut("/devices/{id:long}", (long id, DeviceInput input, HttpContext ctx, DeviceStore devices, PanelViews views) =>
+            SaveDeviceAsync(id, input, ctx, devices, views));
+        me.MapDelete("/devices/{id:long}", DeleteDeviceAsync);
+    }
+
+    private static async Task<IResult> ListDevicesAsync(
+        HttpContext ctx, DeviceStore devices, KeyStore keys, UsageStore usage, CodexGate.Gateway.QuotaService quota, PanelViews views)
+    {
+        var user = ctx.CurrentUser()!;
+        var now = views.Now();
+        var list = await devices.ListAsync(user.Id);
+        var activeKeys = (await keys.ListForUserAsync(user.Id)).Where(k => k.RevokedAt is null && k.DeviceId is not null)
+            .GroupBy(k => k.DeviceId!.Value).ToDictionary(g => g.Key, g => (long)g.Count());
+        var used = (await usage.ByDeviceAsync(user.Id, now - 30 * 86_400_000L)).Where(u => u.DeviceId is not null)
+            .ToDictionary(u => u.DeviceId!.Value);
+        var result = new List<DeviceView>();
+        foreach (var d in list)
+        {
+            result.Add(DeviceView.From(d, await quota.EvaluateDeviceAsync(d, now), activeKeys.GetValueOrDefault(d.Id), used.GetValueOrDefault(d.Id)));
+        }
+        return Results.Ok(result);
+    }
+
+    private static async Task<IResult> SaveDeviceAsync(long? id, DeviceInput input, HttpContext ctx, DeviceStore devices, PanelViews views)
+    {
+        var user = ctx.CurrentUser()!;
+        DeviceRow device;
+        if (id is { } existing)
+        {
+            var found = await devices.GetAsync(existing);
+            if (found is null || found.UserId != user.Id)
+            {
+                return Errors.NotFound();
+            }
+            device = found;
+        }
+        else
+        {
+            if (await devices.CountAsync(user.Id) >= DeviceStore.MaxPerUser)
+            {
+                return Errors.Json(400, "too_many_devices");
+            }
+            device = new DeviceRow { UserId = user.Id, CreatedAt = views.Now() };
+        }
+        var name = (input.Name ?? "").Trim();
+        if (name.Length is 0 or > 40 || name.Any(char.IsControl))
+        {
+            return Errors.Json(400, "invalid_device_name");
+        }
+        var (error, limits) = AdminApi.CheckLimits(input.Limits);
+        if (error is not null)
+        {
+            return Errors.Json(400, error);
+        }
+        device.Name = name;
+        device.Limits = limits;
+        var saved = await devices.SaveAsync(device);
+        return saved is null ? Errors.Json(409, "device_name_taken") : Results.Ok(new { id = saved });
+    }
+
+    /// <summary>Removes a device and revokes its keys; refused while a server session still counts against it.</summary>
+    private static async Task<IResult> DeleteDeviceAsync(
+        long id, HttpContext ctx, DeviceStore devices, KeyStore keys, RemoteStore sessions, PanelViews views)
+    {
+        var user = ctx.CurrentUser()!;
+        var device = await devices.GetAsync(id);
+        if (device is null || device.UserId != user.Id)
+        {
+            return Errors.NotFound();
+        }
+        if (await sessions.CountForDeviceAsync(id) > 0)
+        {
+            return Errors.Json(409, "device_in_use");
+        }
+        await keys.RevokeForDeviceAsync(id, views.Now());
+        await devices.DeleteAsync(id);
+        return Results.NoContent();
     }
 
     private static async Task<IResult> LoginAsync(LoginRequest req, HttpContext ctx, UserStore users, PanelViews views, LoginGuard guard)
@@ -91,10 +183,10 @@ public static class AccountApi
         return Results.NoContent();
     }
 
-    private static async Task<IResult> CreateKeyAsync(NewKeyRequest req, HttpContext ctx, KeyStore keys, PanelViews views)
+    private static async Task<IResult> CreateKeyAsync(NewKeyRequest req, HttpContext ctx, KeyStore keys, DeviceStore devices, PanelViews views)
     {
         var user = ctx.CurrentUser()!;
-        if (await keys.CountActiveAsync(user.Id) >= MaxKeysPerUser)
+        if (await keys.CountPersonalActiveAsync(user.Id) >= MaxKeysPerUser)
         {
             return Errors.Json(400, "too_many_keys");
         }
@@ -102,6 +194,10 @@ public static class AccountApi
         if (name.Length > 40)
         {
             return Errors.Json(400, "name_too_long");
+        }
+        if (req.DeviceId is { } deviceId && (await devices.GetAsync(deviceId))?.UserId != user.Id)
+        {
+            return Errors.Json(400, "unknown_device");
         }
         var secret = ApiKeys.Generate();
         var row = new ApiKeyRow
@@ -111,6 +207,7 @@ public static class AccountApi
             Prefix = ApiKeys.DisplayPrefix(secret),
             Hash = ApiKeys.HashOf(secret),
             CreatedAt = views.Now(),
+            DeviceId = req.DeviceId,
         };
         row.Id = await keys.InsertAsync(row);
         return Results.Ok(new { key = secret, info = KeyView.From(row) });

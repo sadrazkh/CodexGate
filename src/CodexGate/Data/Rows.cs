@@ -45,6 +45,22 @@ public sealed class PlanRow
 
     /// <summary>Memory cap for a user's server sessions in MiB (0 = none); needs systemd on the host.</summary>
     public int RemoteMemoryMb { get; set; }
+
+    /// <summary>
+    /// Users sign in to Codex with their own ChatGPT account; the gateway relays it to ChatGPT and
+    /// meters it, and the owner's API key is never used for them.
+    /// </summary>
+    public bool OwnLogin { get; set; }
+    public List<PlanLimitRow> Limits { get; set; } = [];
+}
+
+/// <summary>A user's own label for where Codex runs (a laptop, a phone, a server session), with its own limits.</summary>
+public sealed class DeviceRow
+{
+    public long Id { get; set; }
+    public long UserId { get; set; }
+    public string Name { get; set; } = "";
+    public long CreatedAt { get; set; }
     public List<PlanLimitRow> Limits { get; set; } = [];
 }
 
@@ -56,6 +72,12 @@ public sealed class RemoteSessionRow
     public string Dir { get; set; } = "";
     public string Program { get; set; } = "codex";
     public long CreatedAt { get; set; }
+
+    /// <summary>The device this session's usage counts against, if any.</summary>
+    public long? DeviceId { get; set; }
+
+    /// <summary>The gateway key made for this session alone (revoked when it is removed).</summary>
+    public long? KeyId { get; set; }
 
     /// <summary>The tmux session name on the host.</summary>
     public string TmuxName => "s" + Id.ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -88,6 +110,7 @@ public sealed class ApiKeyRow
     public long CreatedAt { get; set; }
     public long? LastUsedAt { get; set; }
     public long? RevokedAt { get; set; }
+    public long? DeviceId { get; set; }
 }
 
 public sealed class UsageRow
@@ -111,6 +134,7 @@ public sealed class UsageRow
     /// <summary>Hosted web searches the upstream ran (and billed per call).</summary>
     public long ToolCalls { get; set; }
     public long DurationMs { get; set; }
+    public long? DeviceId { get; set; }
 }
 
 public sealed class PriceRow

@@ -70,12 +70,12 @@ public sealed class CsrfHeaderMiddleware(RequestDelegate next)
     }
 }
 
-/// <summary>Browser hardening for the panel; the /v1 gateway is left untouched.</summary>
+/// <summary>Browser hardening for the panel; the gateways (/v1, /chatgpt) are left untouched.</summary>
 public sealed class SecurityHeadersMiddleware(RequestDelegate next)
 {
     public Task InvokeAsync(HttpContext context)
     {
-        if (!context.Request.Path.StartsWithSegments("/v1"))
+        if (!context.Request.Path.StartsWithSegments("/v1") && !context.Request.Path.StartsWithSegments("/chatgpt"))
         {
             var h = context.Response.Headers;
             h["Content-Security-Policy"] =

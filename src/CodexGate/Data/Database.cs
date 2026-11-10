@@ -148,5 +148,29 @@ public sealed class Database
             provisioned_at INTEGER NOT NULL
         );
         """,
+        """
+        ALTER TABLE plans ADD COLUMN own_login INTEGER NOT NULL DEFAULT 0;
+        CREATE TABLE devices (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            name       TEXT    NOT NULL COLLATE NOCASE,
+            created_at INTEGER NOT NULL,
+            UNIQUE (user_id, name)
+        );
+        CREATE TABLE device_limits (
+            id           INTEGER PRIMARY KEY,
+            device_id    INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+            window_hours INTEGER NOT NULL CHECK (window_hours > 0),
+            kind         TEXT    NOT NULL CHECK (kind IN ('tokens', 'usd')),
+            amount       REAL    NOT NULL CHECK (amount >= 0)
+        );
+        CREATE INDEX ix_device_limits_device ON device_limits(device_id);
+        ALTER TABLE api_keys ADD COLUMN device_id INTEGER REFERENCES devices(id) ON DELETE SET NULL;
+        ALTER TABLE usage ADD COLUMN device_id INTEGER;
+        CREATE INDEX ix_usage_device_at ON usage(device_id, at);
+        CREATE INDEX ix_usage_key ON usage(key_id);
+        ALTER TABLE remote_sessions ADD COLUMN device_id INTEGER;
+        ALTER TABLE remote_sessions ADD COLUMN key_id INTEGER;
+        """,
     ];
 }

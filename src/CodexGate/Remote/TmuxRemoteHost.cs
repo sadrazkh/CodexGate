@@ -13,19 +13,19 @@ public sealed class TmuxRemoteHost(IOptions<GateOptions> options, ILogger<TmuxRe
 {
     private RemoteOptions Settings => options.Value.Remote;
 
-    public async Task ProvisionAsync(long userId, string gatewayUrl, string model, string? key, CancellationToken ct)
+    public async Task ProvisionAsync(long userId, string gatewayUrl, string model, bool ownLogin, CancellationToken ct)
     {
-        var (code, _, err) = await RunAsync(["provision", Id(userId), gatewayUrl, model], key is null ? "" : key + "\n", ct);
+        var (code, _, err) = await RunAsync(["provision", Id(userId), gatewayUrl, model, ownLogin ? "chatgpt" : "api"], null, ct);
         if (code != 0)
         {
             throw new RemoteHostException("Could not prepare the server account: " + err.Trim());
         }
     }
 
-    public async Task StartAsync(long userId, RemoteSessionRow session, int cols, int rows, int memoryMb, CancellationToken ct)
+    public async Task StartAsync(long userId, RemoteSessionRow session, int cols, int rows, int memoryMb, string key, CancellationToken ct)
     {
         var (code, _, err) = await RunAsync(
-            ["new", Id(userId), session.TmuxName, Num(cols), Num(rows), session.Dir, session.Program, Num(Math.Max(0, memoryMb))], null, ct);
+            ["new", Id(userId), session.TmuxName, Num(cols), Num(rows), session.Dir, session.Program, Num(Math.Max(0, memoryMb))], key + "\n", ct);
         if (code != 0)
         {
             throw new RemoteHostException("Could not start the session: " + err.Trim());

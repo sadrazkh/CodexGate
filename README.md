@@ -55,6 +55,8 @@ flowchart LR
 | **Accounts** | Username and password, admin or user, an end date with one-click renewal (+30 / +90 / +365 days), enable / disable, private notes. |
 | **Plans** | Any number of rolling limits (5 hours, 1 day, 7 days, 30 days or custom) in **tokens or dollars**, allowed models (`gpt-5.5`, `gpt-5*`), requests at a time. |
 | **Personal keys** | Users create and revoke their own keys; shown once, stored only as a hash, with “last used”. |
+| **Your own ChatGPT login** | Optional, per plan: users sign in to Codex with their own ChatGPT account instead of your API key. The gateway relays that sign-in to ChatGPT unchanged, counts the usage and applies the limits; it never stores the token. Handy for one person working from several devices. |
+| **Devices** | Each user labels where Codex runs (laptop, phone, a task on the server) and can give each device its own limits. Every key and every server session belongs to a device, and the panel shows which one uses the most. |
 | **Codex on the server** | Optional: start Codex (or a shell) on the server and use it from a web terminal, even on a phone. Sessions survive closed browsers and sleeping laptops, run under each teammate’s own system account, and count against the same plan. [How it works](docs/remote.md). |
 | **One-command setup** | Ready-made PowerShell and macOS/Linux commands write `~/.codex/config.toml` (old one kept as `.bak`) and put the key in `~/.codex/.env`. Tested against the real Codex CLI. |
 | **Limits Codex understands** | When a limit is hit, Codex stops at once with *“You’ve hit your usage limit. Try again at 10:05 AM.”* |
@@ -191,8 +193,9 @@ Every setting is an environment variable (`Gate__Name`) or a command-line flag (
 
 ## Good to know
 
-- **API keys, not ChatGPT subscriptions.** Sharing one person’s Plus/Pro/Business login between several people breaks
-  OpenAI’s terms and gets accounts banned. For subscriptions, give each person their own seat.
+- **One ChatGPT login is one person.** Sharing one person’s Plus/Pro/Business login between several people breaks
+  OpenAI’s terms and gets accounts banned. A plan with “own ChatGPT login” is for each person’s own account (or
+  one person on several devices), never for passing one account around. For a team, use an API key or a seat each.
 - Only what Codex needs gets through: streamed `/v1/responses` and `/v1/models`. Background mode, priority/fast tiers,
   server-stored conversations (`previous_response_id`, `conversation`, `prompt`) and billed hosted tools other than an
   allowed web search are refused or removed, because the gateway could not meter them.
@@ -201,7 +204,7 @@ Every setting is an environment variable (`Gate__Name`) or a command-line flag (
 ## Development
 
 ```bash
-dotnet test                         # 118 unit and integration tests (fake upstream, fake session host), no network
+dotnet test                         # 141 unit and integration tests (fake upstream, fake session host), no network
 node tools/mock-upstream.mjs 5191   # a stand-in Responses API to try the whole flow without spending anything
 ```
 
