@@ -1,0 +1,56 @@
+name: Pages
+
+# The website at https://sadrazkh.github.io/CodexGate/: site/ plus the screenshots and logo from docs/.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "docs/screenshots/**"
+      - "docs/logo.svg"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build and deploy the website
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble the site
+        run: |
+          mkdir _site
+          cp -r site/. _site/
+          cp -r docs/screenshots _site/screenshots
+          cp docs/logo.svg _site/logo.svg
+          touch _site/.nojekyll
+          # Every local link and picture must exist.
+          node -e '
+            const fs = require("fs"), path = require("path"); let bad = 0;
+            for (const f of ["index.html", "fa/index.html"]) {
+              const html = fs.readFileSync("_site/" + f, "utf8");
+              for (const m of html.matchAll(/(?:src|href)="([^"#:]+?)"/g)) {
+                let p = path.join("_site", path.dirname(f), m[1]);
+                if (fs.existsSync(p) && fs.statSync(p).isDirectory()) p = path.join(p, "index.html");
+                if (!fs.existsSync(p)) { console.log("missing in " + f + ": " + m[1]); bad++; }
+              }
+            }
+            process.exit(bad ? 1 : 0);'
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

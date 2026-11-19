@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CodexGate · Your team's Codex on one account</title>
+  <meta name="description" content="Self-hosted gateway for OpenAI Codex: a login, a quota and an end date for every teammate, Codex on your server from any phone, and a one-command install. Open source, AGPL-3.0.">
+  <meta name="theme-color" content="#0c1430">
+  <link rel="icon" href="logo.svg" type="image/svg+xml">
+  <link rel="alternate" hreflang="fa" href="https://sadrazkh.github.io/CodexGate/fa/">
+  <link rel="alternate" hreflang="en" href="https://sadrazkh.github.io/CodexGate/">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="CodexGate · Your team's Codex on one account">
+  <meta property="og:description" content="A login, a quota and an end date for every teammate. Codex on your server, from any phone. One command to install.">
+  <meta property="og:image" content="https://sadrazkh.github.io/CodexGate/screenshots/dashboard-en-light.png">
+  <meta property="og:url" content="https://sadrazkh.github.io/CodexGate/">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+    <symbol id="i-gauge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 14l4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6"/><path d="M15.5 7.5l3 3L22 7l-3-3"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></symbol>
+    <symbol id="i-laptop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M1 20h22"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></symbol>
+    <symbol id="i-route" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15 15 0 0 1 0 20a15 15 0 0 1 0-20"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+    <symbol id="i-server" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="8" rx="2"/><rect x="2" y="13" width="20" height="8" rx="2"/><path d="M6 7h.01M6 17h.01"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 17l.7 1.8L21.5 19.5l-1.8.7L19 22l-.7-1.8-1.8-.7 1.8-.7z"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.1V12a10 10 0 1 1-5.9-9.1"/><polyline points="22 4 12 14 9 11"/></symbol>
+    <symbol id="i-github" viewBox="0 0 24 24"><path fill="currentColor" d="M12 .5C5.65.5.5 5.65.5 12a11.5 11.5 0 0 0 7.86 10.92c.58.1.79-.25.79-.56v-2c-3.2.7-3.87-1.37-3.87-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.39-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 44 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h36"/><path d="M31 5l8 7-8 7"/></symbol>
+  </defs>
+</svg>
+
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="logo.svg" alt="">CodexGate</a>
+    <nav class="nav" id="nav">
+      <a href="#how">How it works</a>
+      <a href="#features">Features</a>
+      <a href="#screens">Screens</a>
+      <a href="#install">Install</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <div class="top-actions">
+      <a class="icon-btn" href="fa/" lang="fa" hreflang="fa">فارسی</a>
+      <button class="icon-btn" type="button" data-theme-toggle aria-label="Light or dark"><svg><use href="#i-moon"/></svg></button>
+      <a class="icon-btn" href="https://github.com/sadrazkh/CodexGate" aria-label="GitHub"><svg><use href="#i-github"/></svg><span class="gh-label">GitHub</span></a>
+      <button class="icon-btn menu-btn" type="button" aria-label="Menu" aria-controls="nav" aria-expanded="false"><svg><use href="#i-menu"/></svg></button>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <div class="wrap">
+      <div class="eyebrow">
+        <span class="pill"><span class="dot"></span><b>v0.4</b> Your own ChatGPT login, devices with their own limits</span>
+        <span class="pill">Open source · AGPL-3.0</span>
+        <span class="pill">English · فارسی</span>
+      </div>
+      <h1>Your team’s Codex,<br><span class="grad">on one account.</span></h1>
+      <p class="lead">CodexGate sits between Codex and the model API. Everyone keeps using Codex as they do today; you get a login, a quota and an end date for each person, see who used what, and revoke one teammate without touching anyone else.</p>
+      <div class="cta">
+        <a class="btn primary" href="#install"><svg><use href="#i-download"/></svg>Install on a server</a>
+        <a class="btn ghost" href="https://github.com/sadrazkh/CodexGate"><svg><use href="#i-github"/></svg>View on GitHub</a>
+      </div>
+      <div class="cmd">
+        <span class="prompt">$</span>
+        <code id="cmd-hero">bash &lt;(curl -fsSL https://raw.githubusercontent.com/sadrazkh/CodexGate/main/install.sh)</code>
+        <button class="copy" type="button" data-copy="cmd-hero"><svg><use href="#i-copy"/></svg><span>Copy</span></button>
+      </div>
+      <p class="hero-note">Linux server, run as root. Takes only free ports, so x-ui or a web server on 443 is left alone.</p>
+
+      <div class="hero-shot">
+        <div class="frame main-frame" data-zoom>
+          <div class="frame-bar"><i></i><i></i><i></i><span>https://codex.example.com:8443</span></div>
+          <img src="screenshots/dashboard-en-light.png" width="2560" height="2360" alt="A teammate's dashboard: subscription, Codex connection, quotas and 30 days of usage">
+        </div>
+        <div class="float-card one" data-zoom><img src="screenshots/terminal-en-dark.png" width="2560" height="1280" alt="Codex running on the server in the web terminal"></div>
+        <div class="float-card two" data-zoom><img src="screenshots/users-fa-dark.png" width="2560" height="1240" alt="The users page in Persian, dark theme"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="after-hero">
+    <div class="wrap">
+      <div class="stats reveal">
+        <div class="stat"><b>1 command</b><span>to install, with its own HTTPS certificate</span></div>
+        <div class="stat"><b>Tokens or $</b><span>rolling limits per plan and per device</span></div>
+        <div class="stat"><b>Any phone</b><span>Codex on your server, in a browser tab</span></div>
+        <div class="stat"><b>141 tests</b><span>plus the real Codex CLI end to end in CI</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="how" style="padding-top:0">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <span class="kicker">How it works</span>
+        <h2>One gateway in front of Codex</h2>
+        <p>Every request passes through CodexGate. It checks who is asking and how much they have left, forwards the request, streams the answer back untouched and records what it used.</p>
+      </div>
+      <div class="flow reveal">
+        <div class="flow-col clients">
+          <div class="node"><span class="ico"><svg><use href="#i-terminal"/></svg></span><div><strong>Codex CLI</strong><small>on any laptop</small></div></div>
+          <div class="node"><span class="ico"><svg><use href="#i-code"/></svg></span><div><strong>Codex app, VS Code</strong><small>read the same settings</small></div></div>
+          <div class="node"><span class="ico"><svg><use href="#i-phone"/></svg></span><div><strong>Phone or tablet</strong><small>web terminal on the server</small></div></div>
+        </div>
+        <div class="arrow"><svg><use href="#i-arrow"/></svg></div>
+        <div class="gate">
+          <img src="logo.svg" alt="">
+          <h3>CodexGate</h3>
+          <div class="chips"><span class="chip">login</span><span class="chip">plan</span><span class="chip">quota</span><span class="chip">devices</span><span class="chip">usage &amp; cost</span><span class="chip">failover</span></div>
+        </div>
+        <div class="arrow"><svg><use href="#i-arrow"/></svg></div>
+        <div class="flow-col ups">
+          <div class="node"><span class="ico"><svg><use href="#i-spark"/></svg></span><div><strong>OpenAI API</strong><small>with your key, one or more upstreams</small></div></div>
+          <div class="node"><span class="ico"><svg><use href="#i-chat"/></svg></span><div><strong>ChatGPT</strong><small>with each person’s own sign-in</small></div></div>
+        </div>
+      </div>
+      <div class="flow-caption reveal">
+        <div><span class="num">1</span><b>A key per person</b>Each teammate signs in to the panel, makes a key and pastes one ready-made command. Codex is set up.</div>
+        <div><span class="num">2</span><b>Checked before it leaves</b>Account, plan, model, limits and requests at a time. A request that cannot be metered is refused.</div>
+        <div><span class="num">3</span><b>Counted when it comes back</b>Input, cached and output tokens and their cost, per user, per device and per server session.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <div class="section-head center reveal">
+        <span class="kicker">Two ways to use it</span>
+        <h2>For a team, or just for you on every device</h2>
+      </div>
+      <div class="modes">
+        <div class="mode reveal">
+          <span class="tag">Team</span>
+          <h3>A team on one API key</h3>
+          <p>You pay for one OpenAI API account. Everyone gets their own login and limits.</p>
+          <ul class="ticks">
+            <li>Usernames, passwords, end dates with one-click renewal</li>
+            <li>Plans with 5-hour, daily, weekly or any rolling limits</li>
+            <li>Your key and organization never reach anyone</li>
+            <li>Disable one person and their Codex stops at once</li>
+          </ul>
+        </div>
+        <div class="mode reveal">
+          <span class="tag">Personal</span>
+          <h3>Your own ChatGPT login, everywhere</h3>
+          <p>Run Codex on your server with your own ChatGPT subscription, and pick it up from your phone or laptop.</p>
+          <ul class="ticks">
+            <li>Sign in once on the server; every session uses it</li>
+            <li>Devices like “Laptop” and “Phone”, each with its own limits</li>
+            <li>Tokens per task, so you see which job is expensive</li>
+            <li>Sessions keep running when the browser closes</li>
+          </ul>
+          <div class="note">One ChatGPT login is one person. This mode is for your own account, never for passing one subscription around.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="features">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <span class="kicker">Features</span>
+        <h2>Everything a shared Codex needs, nothing it doesn’t</h2>
+        <p>A small, readable stack: ASP.NET Core, SQLite and a panel with no build step.</p>
+      </div>
+      <div class="features">
+        <div class="feature reveal"><div class="ico"><svg><use href="#i-users"/></svg></div><h3>Accounts and end dates</h3><p>Admin or user, enable or disable, private notes, renew for 30, 90 or 365 days with one click.</p></div>
+        <div class="feature reveal"><div class="ico"><svg><use href="#i-gauge"/></svg></div><h3>Rolling limits</h3><p>Any number of windows in tokens or dollars. Room frees up as old usage ages out, like ChatGPT’s own limits.</p></div>
+        <div class="feature reveal"><div class="ico"><svg><use href="#i-clock"/></svg></div><h3>Limits Codex understands</h3><p>When one is used up, Codex stops at once and says “Try again at 10:05 AM”.</p></div>
+        <div class="feature reveal"><div class="ico"><svg><use href="#i-terminal"/></svg></div><h3>Codex on the server</h3><p>Start Codex or a shell on the server and use it from a web terminal. Each person runs under their own system account.</p></div>
+        <div class="feature reveal"><div class="ico"><svg><use href="#i-laptop"/></svg></div><h3>Devices <span class="new">new</span></h3><p>Label where Codex runs and give each place its own limits. Keys and server sessions can each belong to one.</p></div>
+        <div class="feature reveal"><div class="ico"><svg><use href="#i-chat"/></svg></div><h3>Own ChatGPT login <span class="new">new</span></h3><p>Per plan: Codex uses each person’s own ChatGPT account. The gateway relays it unchanged, meters it, and never keeps the sign-in.</p></div>
+        <div class="feature reveal"><div class="ico"><svg><use href="#i-download"/></svg></div><h3>One-command install</h3><p>Docker, free ports only, a setup page behind a one-time token, Let’s Encrypt over port 80 or Cloudflare DNS.</p></div>
+        <div class="feature reveal"><div class="ico"><svg><use href="#i-chart"/></svg></div><h3>Usage and cost</h3><p>Every request with its tokens and price, 30-day charts, totals by user and model, CSV export.</p></div>
+        <div class="feature reveal"><div class="ico"><svg><use href="#i-route"/></svg></div><h3>Several upstreams</h3><p>Least-busy routing per model and automatic failover on 429, 5xx and network errors.</p></div>
+        <div class="feature reveal"><div class="ico"><svg><use href="#i-key"/></svg></div><h3>Personal keys</h3><p>Users make and revoke their own keys. Shown once, stored only as a hash, with “last used”.</p></div>
+        <div class="feature reveal"><div class="ico"><svg><use href="#i-search"/></svg></div><h3>Web search under control</h3><p>Codex asks for a billed search tool on every request. It is removed unless you allow it, then counted and priced.</p></div>
+        <div class="feature reveal"><div class="ico"><svg><use href="#i-globe"/></svg></div><h3>English and Persian</h3><p>Left-to-right or right-to-left with the Persian calendar, light and dark, comfortable on a phone.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="screens" class="alt">
+    <div class="wrap">
+      <div class="section-head center reveal">
+        <span class="kicker">Screens</span>
+        <h2>A panel people actually like using</h2>
+        <p>Click any picture to see it full size.</p>
+      </div>
+      <div class="tabs" role="tablist">
+        <button class="tab" type="button" role="tab" data-shot="s-dash" aria-selected="true">Dashboard</button>
+        <button class="tab" type="button" role="tab" data-shot="s-users" aria-selected="false">Users</button>
+        <button class="tab" type="button" role="tab" data-shot="s-report" aria-selected="false">Report</button>
+        <button class="tab" type="button" role="tab" data-shot="s-term" aria-selected="false">Web terminal</button>
+        <button class="tab" type="button" role="tab" data-shot="s-setup" aria-selected="false">Setup command</button>
+      </div>
+      <figure class="shot active" id="s-dash"><div class="frame" data-zoom><div class="frame-bar"><i></i><i></i><i></i><span>My dashboard</span></div><img loading="lazy" src="screenshots/dashboard-en-light.png" width="2560" height="2360" alt="Dashboard: subscription, quotas and usage"></div><figcaption>Each person sees their plan, what is left in each window and 30 days of usage.</figcaption></figure>
+      <figure class="shot" id="s-users"><div class="frame" data-zoom><div class="frame-bar"><i></i><i></i><i></i><span>Users</span></div><img loading="lazy" src="screenshots/users-en-light.png" width="2560" height="1240" alt="Users: plan, status, end date, highest usage"></div><figcaption>Everyone at a glance: plan, status, end date, highest usage and last use.</figcaption></figure>
+      <figure class="shot" id="s-report"><div class="frame" data-zoom><div class="frame-bar"><i></i><i></i><i></i><span>Report</span></div><img loading="lazy" src="screenshots/report-en-dark.png" width="2560" height="2040" alt="Usage report: totals, chart, by user, by model, upstreams"></div><figcaption>Totals, a 30-day chart, usage by user and by model, and the health of each upstream.</figcaption></figure>
+      <figure class="shot" id="s-term"><div class="frame" data-zoom><div class="frame-bar"><i></i><i></i><i></i><span>Server · Terminal</span></div><img loading="lazy" src="screenshots/terminal-en-dark.png" width="2560" height="1280" alt="Codex in the web terminal"></div><figcaption>Codex running on the server, in a browser tab, from a laptop or a phone.</figcaption></figure>
+      <figure class="shot" id="s-setup"><div class="frame" data-zoom><div class="frame-bar"><i></i><i></i><i></i><span>New key</span></div><img loading="lazy" src="screenshots/setup-en-dark.png" width="2560" height="2000" alt="A new key with its ready-made setup command"></div><figcaption>A new key comes with a ready-made command for PowerShell or macOS and Linux.</figcaption></figure>
+      <div class="thumbs reveal">
+        <button type="button" data-zoom><img loading="lazy" src="screenshots/dashboard-fa-dark.png" alt="Dashboard in Persian, dark theme"></button>
+        <button type="button" data-zoom><img loading="lazy" src="screenshots/server-fa-dark.png" alt="Server sessions in Persian"></button>
+        <button type="button" data-zoom><img loading="lazy" src="screenshots/plan-editor-fa-light.png" alt="Plan editor in Persian"></button>
+        <button type="button" data-zoom><img loading="lazy" src="screenshots/users-fa-dark.png" alt="Users in Persian, dark theme"></button>
+      </div>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="wrap install">
+      <div>
+        <div class="section-head reveal" style="margin-bottom:30px">
+          <span class="kicker">Install</span>
+          <h2>Running in a few minutes</h2>
+          <p>The installer sets up Docker if needed, builds CodexGate and prints one private link. The rest happens in your browser.</p>
+        </div>
+        <ol class="steps reveal">
+          <li><div><h3>Run one command as root</h3><p>It takes only free ports: the panel goes on 8443, and 443 or 80 stay with whatever already owns them. If your connection drops, it keeps going.</p></div></li>
+          <li><div><h3>Open the printed link</h3><p>The setup page opens only with its one-time token. Choose the admin, enter your domain and pick how to get the certificate.</p></div></li>
+          <li><div><h3>Get the certificate</h3><p>Over port 80 if it is free, or through Cloudflare DNS with an API token, which needs no port at all. It renews itself.</p></div></li>
+          <li><div><h3>Add people</h3><p>Make a plan, add users, and each one connects Codex with a single command from their own page.</p></div></li>
+        </ol>
+      </div>
+      <div class="stack reveal">
+        <div class="code-card">
+          <p class="code-title">On the server</p>
+          <button class="copy" type="button" data-copy="cmd-install"><svg><use href="#i-copy"/></svg><span>Copy</span></button>
+<pre class="code" id="cmd-install">bash &lt;(curl -fsSL https://raw.githubusercontent.com/sadrazkh/CodexGate/main/install.sh)</pre>
+        </div>
+        <div class="code-card">
+          <p class="code-title">Options</p>
+<pre class="code"><span class="c"># the panel on 443 instead of 8443, if 443 is free</span>
+bash install.sh <span class="k">--https-port</span> 443
+<span class="c"># a memory cap (default: 60% of the server)</span>
+bash install.sh <span class="k">--memory</span> 16g
+<span class="c"># run it again later to update; your data is kept</span></pre>
+        </div>
+        <div class="code-card">
+          <p class="code-title">Or with Docker by hand</p>
+<pre class="code">docker build -t codexgate .
+docker run -d --name codexgate --restart unless-stopped \
+  -p 127.0.0.1:8080:8080 -v codexgate-data:/data \
+  -e Gate__Upstreams__0__BaseUrl=<span class="s">https://api.openai.com/v1</span> \
+  -e Gate__Upstreams__0__ApiKey=<span class="s">sk-...</span> \
+  codexgate</pre>
+        </div>
+        <div class="callout"><svg><use href="#i-check"/></svg><div>CI installs it on a fresh server whose port 443 is already taken, gets a certificate from a test authority, signs in and updates it in place, on every change.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt" id="security">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <span class="kicker">Safe by default</span>
+        <h2>Built to keep a shared key private</h2>
+      </div>
+      <div class="sec-grid reveal">
+        <div class="sec-item"><svg><use href="#i-lock"/></svg><p><b>Your key stays on the server.</b> Upstream errors are scrubbed of organization, project and key ids before anyone sees them.</p></div>
+        <div class="sec-item"><svg><use href="#i-shield"/></svg><p><b>Requests are checked and rewritten.</b> One canonical body, no server-side storage, a private safety id per user, nothing that cannot be metered.</p></div>
+        <div class="sec-item"><svg><use href="#i-server"/></svg><p><b>One system account per person.</b> Server sessions cannot read each other’s files, the database or the gateway’s keys.</p></div>
+        <div class="sec-item"><svg><use href="#i-key"/></svg><p><b>Keys stored only as hashes.</b> Each server session has a key of its own that never appears on a command line.</p></div>
+        <div class="sec-item"><svg><use href="#i-users"/></svg><p><b>Sign-ins that end when they should.</b> Disabling a user or changing a password ends their sessions at once.</p></div>
+        <div class="sec-item"><svg><use href="#i-globe"/></svg><p><b>Browser hardening.</b> Strict content policy, a CSRF header on every change, login throttling per address and per account.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="faq">
+    <div class="wrap">
+      <div class="section-head center reveal">
+        <span class="kicker">FAQ</span>
+        <h2>Good to know</h2>
+      </div>
+      <div class="faq reveal">
+        <details><summary>Can my team share one ChatGPT Plus or Pro subscription through it?</summary><p>No. Sharing one person’s ChatGPT login between several people breaks OpenAI’s terms and gets accounts banned. For a team, CodexGate uses an OpenAI API key. The “own ChatGPT login” mode is for each person’s own account, or one person on several devices.</p></details>
+        <details><summary>Will it break x-ui or another service on my server?</summary><p>The installer takes only ports that are free and runs CodexGate in Docker on its own network. If something already owns 443 or 80, it is left alone and the panel uses 8443. Sessions cannot reach the host’s loopback.</p></details>
+        <details><summary>Which Codex clients work?</summary><p>The Codex CLI, the desktop app and the VS Code extension all read the same <code>~/.codex/config.toml</code>, which the ready-made command writes for you (your old file is kept as <code>.bak</code>).</p></details>
+        <details><summary>Can I use it from my phone?</summary><p>Yes. The panel works on a phone, and with server sessions Codex runs on the server while you watch and type in a browser tab. Close the tab and it keeps working; open it again from any device and you see the same screen.</p></details>
+        <details><summary>How are tokens counted against a limit?</summary><p>Fresh input and output count in full; cached input counts at 0.1 by default, since the API bills it at about a tenth. Dollar limits use the price table you set. Requests already running count at the user’s recent average.</p></details>
+        <details><summary>What if my SSH connection drops during the install?</summary><p>The installer keeps going on the server. Reconnect and read <code>/var/log/codexgate-install.log</code>; running the command again while it is still busy just shows its progress.</p></details>
+        <details><summary>Where is my data, and how do I back it up?</summary><p>Everything is in one SQLite database next to the cookie keys and the certificate, in a Docker volume. An admin can download a consistent copy from the panel at any time.</p></details>
+      </div>
+    </div>
+  </section>
+
+  <section style="padding-top:0">
+    <div class="wrap">
+      <div class="final reveal">
+        <h2>Give everyone Codex. Keep the bill in sight.</h2>
+        <p>Free and open source under AGPL-3.0. Install it on your own server in a few minutes.</p>
+        <div class="cta">
+          <a class="btn primary" href="#install"><svg><use href="#i-download"/></svg>Install</a>
+          <a class="btn ghost" href="https://github.com/sadrazkh/CodexGate"><svg><use href="#i-github"/></svg>Star on GitHub</a>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="logo.svg" alt="" width="26" height="26">CodexGate</a>
+    <nav>
+      <a href="https://github.com/sadrazkh/CodexGate#readme">Documentation</a>
+      <a href="https://github.com/sadrazkh/CodexGate/blob/main/docs/remote.md">Codex on the server</a>
+      <a href="https://github.com/sadrazkh/CodexGate/issues">Issues</a>
+      <a href="https://github.com/sadrazkh/CodexGate/blob/main/LICENSE">AGPL-3.0</a>
+      <a href="fa/" lang="fa" hreflang="fa">فارسی</a>
+    </nav>
+  </div>
+</footer>
+<script src="assets/site.js"></script>
+</body>
+</html>

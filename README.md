@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <b>English</b> · <a href="README.fa.md">فارسی</a>
+  <a href="https://sadrazkh.github.io/CodexGate/"><b>Website</b></a> · <b>English</b> · <a href="README.fa.md">فارسی</a>
 </p>
 
 <p align="center">
